@@ -12,7 +12,7 @@ static_images:
     HEIGHT: 480
 static_text:
   CPU_MODEL:
-    TEXT: Your CPU model here
+    TEXT: Intel Core i9-13900K
     X: 50
     Y: 127
     FONT: generale-mono/GeneraleMonoA.ttf
@@ -20,7 +20,7 @@ static_text:
     FONT_COLOR: 255, 239, 8
     BACKGROUND_IMAGE: background.png
   GPU_MODEL:
-    TEXT: Your GPU model here
+    TEXT: AMD RX 6900 XTX
     X: 50
     Y: 215
     FONT: generale-mono/GeneraleMonoA.ttf
@@ -28,7 +28,7 @@ static_text:
     FONT_COLOR: 255, 239, 8
     BACKGROUND_IMAGE: background.png
   RAM_MODEL:
-    TEXT: Your RAM model here
+    TEXT: Asgard DDR5
     X: 50
     Y: 303
     FONT: generale-mono/GeneraleMonoA.ttf
@@ -47,14 +47,6 @@ static_text:
     TEXT: UPLOAD
     X: 43
     Y: 391
-    FONT: generale-mono/GeneraleMonoA.ttf
-    FONT_SIZE: 15
-    FONT_COLOR: 255, 239, 8
-    BACKGROUND_IMAGE: background.png
-  DISK_USAGE:
-    TEXT: DISK USAGE
-    X: 66
-    Y: 429
     FONT: generale-mono/GeneraleMonoA.ttf
     FONT_SIZE: 15
     FONT_COLOR: 255, 239, 8
@@ -189,18 +181,6 @@ STATS:
         FONT_SIZE: 40
         FONT_COLOR: 2, 216, 243
         BACKGROUND_IMAGE: background.png
-  DISK:
-    INTERVAL: 10
-    USED:
-      PERCENT_TEXT:
-        SHOW: True
-        SHOW_UNIT: True
-        X: 170
-        Y: 430
-        FONT: generale-mono/GeneraleMonoA.ttf
-        FONT_SIZE: 30
-        FONT_COLOR: 2, 216, 243
-        BACKGROUND_IMAGE: background.png
   NET:
     INTERVAL: 1
     ETH:
@@ -226,7 +206,7 @@ STATS:
     INTERVAL: 1
     DAY:
       TEXT:
-        SHOW: True
+        SHOW: False
         X: 10
         Y: 455
         FONT: generale-mono/GeneraleMonoA.ttf
@@ -236,8 +216,8 @@ STATS:
     HOUR:
       TEXT:
         SHOW: True
-        X: 193
-        Y: 32
+        X: 10
+        Y: 455
         FONT: generale-mono/GeneraleMonoA.ttf
         FONT_SIZE: 15
         FONT_COLOR: 255, 239, 8
