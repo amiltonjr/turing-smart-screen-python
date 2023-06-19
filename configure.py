@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# turing-smart-screen-python - a Python system monitor and library for 3.5" USB-C displays like Turing Smart Screen or XuanFang
+# turing-smart-screen-python - a Python system monitor and library for USB-C displays like Turing Smart Screen or XuanFang
 # https://github.com/mathoudebine/turing-smart-screen-python/
 
 # Copyright (C) 2021-2023  Matthieu Houdebine (mathoudebine)
@@ -19,35 +19,68 @@
 
 # This file is the system monitor configuration GUI
 
+
 import os
 import subprocess
 import sys
-import tkinter.ttk as ttk
-from tkinter import *
 
-import psutil
-import ruamel.yaml
-import sv_ttk
-from PIL import Image, ImageTk
-from serial.tools.list_ports import comports
+MIN_PYTHON = (3, 7)
+if sys.version_info < MIN_PYTHON:
+    print("[ERROR] Python %s.%s or later is required." % MIN_PYTHON)
+    try:
+        sys.exit(0)
+    except:
+        os._exit(0)
+
+try:
+    import tkinter.ttk as ttk
+    from tkinter import *
+except:
+    print(
+        "[ERROR] Tkinter dependency not installed. Please follow troubleshooting page: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Troubleshooting#all-os-tkinter-dependency-not-installed")
+    try:
+        sys.exit(0)
+    except:
+        os._exit(0)
+
+try:
+    import psutil
+    import ruamel.yaml
+    import sv_ttk
+    from PIL import Image, ImageTk
+    from serial.tools.list_ports import comports
+except:
+    print(
+        "[ERROR] Python dependencies not installed. Please follow start guide: https://github.com/mathoudebine/turing-smart-screen-python/wiki/System-monitor-:-how-to-start")
+    try:
+        sys.exit(0)
+    except:
+        os._exit(0)
 
 # Maps between config.yaml values and GUI description
-revision_map = {'A': "Turing / rev. A", 'B': "XuanFang / rev. B / flagship", 'SIMU': "Simulated screen"}
+revision_map = {'A': "Turing 3.5\" / rev. A", 'B': "XuanFang / rev. B / flagship", 'C': "Turing 5\"",
+                'SIMU': "Simulated 3.5\" screen", 'SIMU5': "Simulated 5\" screen"}
 hw_lib_map = {"AUTO": "Automatic", "LHM": "LibreHardwareMonitor (admin.)", "PYTHON": "Python libraries",
               "STUB": "Fake random data", "STATIC": "Fake static data"}
 reverse_map = {False: "classic", True: "reverse"}
+revision_size = {'A': '3.5"', 'B': '3.5"', 'C': '5"', 'SIMU': '3.5"', 'SIMU5': '5"'}
 
 
-def get_themes():
+def get_themes(revision: str):
     themes = []
     directory = 'res/themes/'
     for filename in os.listdir('res/themes'):
-        f = os.path.join(directory, filename)
-        # checking if it is a file
-        if os.path.isdir(f):
-            theme = os.path.join(f, 'theme.yaml')
+        dir = os.path.join(directory, filename)
+        # checking if it is a directory
+        if os.path.isdir(dir):
+            # Check if a theme.yaml file exists
+            theme = os.path.join(dir, 'theme.yaml')
             if os.path.isfile(theme):
-                themes.append(filename)
+                # Get display size from theme.yaml
+                with open(theme, "rt", encoding='utf8') as stream:
+                    theme_data, ind, bsi = ruamel.yaml.util.load_yaml_guess_indent(stream)
+                    if theme_data['display'].get("DISPLAY_SIZE", '3.5"') == revision_size[revision]:
+                        themes.append(filename)
     return sorted(themes, key=str.casefold)
 
 
@@ -86,7 +119,7 @@ class TuringConfigWindow:
 
         self.theme_label = ttk.Label(self.window, text='Theme')
         self.theme_label.place(x=320, y=35)
-        self.theme_cb = ttk.Combobox(self.window, values=get_themes(), state='readonly')
+        self.theme_cb = ttk.Combobox(self.window, state='readonly')
         self.theme_cb.place(x=500, y=30, width=210)
         self.theme_cb.bind('<<ComboboxSelected>>', self.on_theme_change)
 
@@ -111,7 +144,6 @@ class TuringConfigWindow:
         self.lhm_admin_warning = ttk.Label(self.window,
                                            text="❌ Restart as admin. or select another Hardware monitoring",
                                            foreground='#f00')
-        self.lhm_admin_warning.place(x=320, y=190)
 
         sysmon_label = ttk.Label(self.window, text='Display configuration', font='bold')
         sysmon_label.place(x=320, y=220)
@@ -143,7 +175,6 @@ class TuringConfigWindow:
         self.brightness_warning_label = ttk.Label(self.window,
                                                   text="⚠ Turing / rev. A displays can get hot at high brightness!",
                                                   foreground='#ff8c00')
-        self.brightness_warning_label.place(x=320, y=420)
 
         self.edit_theme_btn = ttk.Button(self.window, text="Edit theme", command=lambda: self.on_theme_editor_click())
         self.edit_theme_btn.place(x=310, y=450, height=50, width=130)
@@ -259,7 +290,7 @@ class TuringConfigWindow:
         self.load_theme_preview()
 
     def on_theme_editor_click(self):
-        subprocess.Popen(os.path.join(os.getcwd(), "theme-editor.py") + " " + self.theme_cb.get(), shell=True)
+        subprocess.Popen(os.path.join(os.getcwd(), "theme-editor.py") + " \"" + self.theme_cb.get() + "\"", shell=True)
 
     def on_save_click(self):
         self.save_config_values()
@@ -275,7 +306,8 @@ class TuringConfigWindow:
 
     def on_model_change(self, e=None):
         self.show_hide_brightness_warning()
-        if [k for k, v in revision_map.items() if v == self.model_cb.get()][0] == "SIMU":
+        revision = [k for k, v in revision_map.items() if v == self.model_cb.get()][0]
+        if revision == "SIMU" or revision == "SIMU5":
             self.com_cb.configure(state="disabled", foreground="#C0C0C0")
             self.orient_cb.configure(state="disabled", foreground="#C0C0C0")
             self.brightness_slider.configure(state="disabled")
@@ -285,6 +317,13 @@ class TuringConfigWindow:
             self.orient_cb.configure(state="readonly", foreground="#000")
             self.brightness_slider.configure(state="normal")
             self.brightness_val_label.configure(foreground="#000")
+
+        themes = get_themes(revision)
+        self.theme_cb.config(values=themes)
+
+        if not self.theme_cb.get() in themes:
+            # The selected theme does not exist anymore / is not allowed for this screen model : select 1st theme avail.
+            self.theme_cb.set(themes[0])
 
     def on_hwlib_change(self, e=None):
         hwlib = [k for k, v in hw_lib_map.items() if v == self.hwlib_cb.get()][0]

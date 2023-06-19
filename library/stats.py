@@ -1,4 +1,4 @@
-# turing-smart-screen-python - a Python system monitor and library for 3.5" USB-C displays like Turing Smart Screen or XuanFang
+# turing-smart-screen-python - a Python system monitor and library for USB-C displays like Turing Smart Screen or XuanFang
 # https://github.com/mathoudebine/turing-smart-screen-python/
 
 # Copyright (C) 2021-2023  Matthieu Houdebine (mathoudebine)
@@ -39,6 +39,9 @@ WLO_CARD = config.CONFIG_DATA["config"]["WLO"]
 HW_SENSORS = config.CONFIG_DATA["config"]["HW_SENSORS"]
 
 if HW_SENSORS == "PYTHON":
+    if platform.system() == 'Windows':
+        logger.warning("It is recommended to use LibreHardwareMonitor integration for Windows instead of Python "
+                       "libraries (require admin. rights)")
     import library.sensors.sensors_python as sensors
 elif HW_SENSORS == "LHM":
     if platform.system() == 'Windows':
@@ -61,7 +64,7 @@ elif HW_SENSORS == "AUTO":
     else:
         import library.sensors.sensors_python as sensors
 else:
-    logger.error("Unsupported SENSORS value in config.yaml")
+    logger.error("Unsupported HW_SENSORS value in config.yaml")
     try:
         sys.exit(0)
     except:
@@ -757,7 +760,11 @@ class Net:
 class Date:
     @staticmethod
     def stats():
-        date_now = datetime.datetime.now()
+        if HW_SENSORS == "STATIC":
+            # For static sensors, use predefined date/time
+            date_now = datetime.datetime.fromtimestamp(1694014609)
+        else:
+            date_now = datetime.datetime.now()
 
         if platform.system() == "Windows":
             # Windows does not have LC_TIME environment variable, use deprecated getdefaultlocale() that returns language code following RFC 1766

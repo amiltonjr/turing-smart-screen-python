@@ -1,4 +1,4 @@
-# turing-smart-screen-python - a Python system monitor and library for 3.5" USB-C displays like Turing Smart Screen or XuanFang
+# turing-smart-screen-python - a Python system monitor and library for USB-C displays like Turing Smart Screen or XuanFang
 # https://github.com/mathoudebine/turing-smart-screen-python/
 
 # Copyright (C) 2021-2023  Matthieu Houdebine (mathoudebine)
@@ -76,7 +76,7 @@ class LcdComm(ABC):
         if self.com_port == 'AUTO':
             lcd_com_port = self.auto_detect_com_port()
             if not lcd_com_port:
-                logger.error("Cannot find COM port automatically, please set it manually in config.yaml")
+                logger.error("Cannot find COM port automatically, please run Configuration again and select COM port manually")
                 try:
                     sys.exit(0)
                 except:
@@ -101,6 +101,7 @@ class LcdComm(ABC):
             # We timed-out trying to write to our device, slow things down.
             logger.warning("(Write data) Too fast! Slow down!")
 
+
     def SendLine(self, line: bytes):
         if self.update_queue:
             # Queue the request. Mutex is locked by caller to queue multiple lines
@@ -115,6 +116,14 @@ class LcdComm(ABC):
         except serial.serialutil.SerialTimeoutException:
             # We timed-out trying to write to our device, slow things down.
             logger.warning("(Write line) Too fast! Slow down!")
+
+    def ReadData(self, readSize: int):
+        try:
+            response = self.lcd_serial.read(readSize)
+            #logger.debug("Received: [{}]".format(str(response, 'utf-8')))
+        except serial.serialutil.SerialException:
+            # We timed-out trying to read to our device, slow things down.
+            logger.warning("(Read data) Too fast! Slow down!")
 
     @staticmethod
     @abstractmethod
@@ -145,7 +154,6 @@ class LcdComm(ABC):
     def SetBrightness(self, level: int):
         pass
 
-    @abstractmethod
     def SetBackplateLedColor(self, led_color: Tuple[int, int, int] = (255, 255, 255)):
         pass
 
@@ -262,12 +270,161 @@ class LcdComm(ABC):
             bar_image = bar_image.crop(box=(x, y, x + width, y + height))
 
         # Draw progress bar
-        bar_filled_width = value / (max_value - min_value) * width
+        bar_filled_width = (value / (max_value - min_value) * width) - 1
+        if bar_filled_width < 0:
+            bar_filled_width = 0
         draw = ImageDraw.Draw(bar_image)
-        draw.rectangle([0, 0, bar_filled_width - 1, height - 1], fill=bar_color, outline=bar_color)
+        draw.rectangle([0, 0, bar_filled_width, height - 1], fill=bar_color, outline=bar_color)
 
         if bar_outline:
             # Draw outline
             draw.rectangle([0, 0, width - 1, height - 1], fill=None, outline=bar_color)
 
         self.DisplayPILImage(bar_image, x, y)
+
+    def DisplayRadialProgressBar(self, xc: int, yc: int, radius: int, bar_width: int,
+                                 min_value: int = 0,
+                                 max_value: int = 100,
+                                 angle_start: int = 0,
+                                 angle_end: int = 360,
+                                 angle_sep: int = 5,
+                                 angle_steps: int = 10,
+                                 clockwise: bool = True,
+                                 value: int = 50,
+                                 text: str = None,
+                                 with_text: bool = True,
+                                 font: str = "roboto/Roboto-Black.ttf",
+                                 font_size: int = 20,
+                                 font_color: Tuple[int, int, int] = (0, 0, 0),
+                                 bar_color: Tuple[int, int, int] = (0, 0, 0),
+                                 background_color: Tuple[int, int, int] = (255, 255, 255),
+                                 background_image: str = None):
+        # Generate a radial progress bar and display it
+        # Provide the background image path to display progress bar with transparent background
+
+        if isinstance(bar_color, str):
+            bar_color = tuple(map(int, bar_color.split(', ')))
+
+        if isinstance(background_color, str):
+            background_color = tuple(map(int, background_color.split(', ')))
+
+        if isinstance(font_color, str):
+            font_color = tuple(map(int, font_color.split(', ')))
+
+        assert xc - radius >= 0 and xc + radius <= self.get_width(), 'Progress bar width exceeds display width'
+        assert yc - radius >= 0 and yc + radius <= self.get_height(), 'Progress bar height exceeds display height'
+        assert 0 < bar_width <= radius, 'Progress bar linewidth must be > 0 and <= radius'
+        assert angle_end % 361 != angle_start % 361, 'Change your angles values'
+        assert isinstance(angle_steps, int), 'angle_steps value must be an integer'
+        assert angle_sep >= 0, 'Provide an angle_sep value >= 0'
+        assert angle_steps > 0, 'Provide an angle_step value > 0'
+        assert angle_sep * angle_steps < 360, 'Given angle_sep and angle_steps values are not correctly set'
+
+        # Don't let the set value exceed our min or max value, this is bad :)
+        if value < min_value:
+            value = min_value
+        elif max_value < value:
+            value = max_value
+
+        assert min_value <= value <= max_value, 'Progress bar value shall be between min and max'
+
+        diameter = 2 * radius
+        bbox = (xc - radius, yc - radius, xc + radius, yc + radius)
+        #
+        if background_image is None:
+            # A bitmap is created with solid background
+            bar_image = Image.new('RGB', (diameter, diameter), background_color)
+        else:
+            # A bitmap is created from provided background image
+            bar_image = Image.open(background_image)
+
+            # Crop bitmap to keep only the progress bar background
+            bar_image = bar_image.crop(box=bbox)
+
+        # Draw progress bar
+        pct = (value - min_value)/(max_value - min_value)
+        draw = ImageDraw.Draw(bar_image)
+
+        # PIL arc method uses angles with
+        #  . 3 o'clock for 0
+        #  . clockwise from angle start to angle end
+        angle_start %= 361
+        angle_end %= 361
+        #
+        if clockwise:
+            if angle_end < angle_start:
+                ecart = 360 - angle_start + angle_end
+            else:
+                ecart = angle_end - angle_start
+            #
+            # solid bar case
+            if angle_sep == 0:
+                if angle_end < angle_start:
+                    angleE = angle_start + pct * ecart
+                    angleS = angle_start
+                else:
+                    angleS = angle_start
+                    angleE = angle_start + pct * ecart
+                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE,
+                         fill=bar_color, width=bar_width)
+            # discontinued bar case
+            else:
+                angleE = angle_start + pct * ecart
+                angle_complet = ecart / angle_steps
+                etapes = int((angleE - angle_start) / angle_complet)
+                for i in range(etapes):
+                    draw.arc([0, 0, diameter - 1, diameter - 1],
+                             angle_start + i * angle_complet,
+                             angle_start + (i + 1) * angle_complet - angle_sep,
+                             fill=bar_color,
+                             width=bar_width)
+
+                draw.arc([0, 0, diameter - 1, diameter - 1],
+                         angle_start + etapes * angle_complet,
+                         angleE,
+                         fill=bar_color,
+                         width=bar_width)
+        else:
+            if angle_end < angle_start:
+                ecart = angle_start - angle_end
+            else:
+                ecart = 360 - angle_end + angle_start
+            # solid bar case
+            if angle_sep == 0:
+                if angle_end < angle_start:
+                    angleE = angle_start
+                    angleS = angle_start - pct * ecart
+                else:
+                    angleS = angle_start - pct * ecart
+                    angleE = angle_start
+                draw.arc([0, 0, diameter - 1, diameter - 1], angleS, angleE,
+                         fill=bar_color, width=bar_width)
+            # discontinued bar case
+            else:
+                angleS = angle_start - pct * ecart
+                angle_complet = ecart / angle_steps
+                etapes = int((angle_start - angleS) / angle_complet)
+                for i in range(etapes):
+                    draw.arc([0, 0, diameter - 1, diameter - 1],
+                             angle_start - (i + 1) * angle_complet + angle_sep,
+                             angle_start - i * angle_complet,
+                             fill=bar_color,
+                             width=bar_width)
+
+                draw.arc([0, 0, diameter - 1, diameter - 1],
+                         angleS,
+                         angle_start - etapes * angle_complet,
+                         fill=bar_color,
+                         width=bar_width)
+
+        # Draw text
+        if with_text:
+            if text is None:
+                text = f"{int(pct * 100 + .5)}%"
+            font = ImageFont.truetype("./res/fonts/" + font, font_size)
+            left, top, right, bottom = font.getbbox(text)
+            w, h = right - left, bottom - top
+            draw.text((radius - w / 2, radius - top - h / 2), text,
+                      font=font, fill=font_color)
+
+        self.DisplayPILImage(bar_image, xc - radius, yc - radius)

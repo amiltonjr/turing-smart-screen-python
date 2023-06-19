@@ -17,7 +17,8 @@ config:
   # - bash-dark-green
   # - bash-dark-green-gpu
   # - BigClock
-  THEME: Cyberpunk-net
+  # Use the name of the folder as value
+  THEME: 3.5inchTheme2
 
   # Hardware sensors reading
   # Choose the appropriate method for reading your hardware sensors:
@@ -35,7 +36,8 @@ config:
   WLO: Wi-Fi # Wi-Fi Card
 
 display:
-  # Display revision: A or B (for "flagship" version, use B) or SIMU for simulated LCD (image written in screencap.png)
+  # Display revision: A for Turing 3.5", B for Xuanfang 3.5" (inc. flagship), C for Turing 5"
+  # Use SIMU for 3.5" simulated LCD (image written in screencap.png) or SIMU5 for 5" simulated LCD
   # To identify your revision: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Hardware-revisions
   REVISION: A
 
@@ -48,10 +50,3 @@ display:
   # Set to true to reverse display orientation (landscape <-> reverse landscape, portrait <-> reverse portrait)
   # Note: Display basic orientation (portrait or landscape) is defined by the theme you have selected
   DISPLAY_REVERSE: false
-
-  # Display resolution in portrait orientation
-  # Do not use this setting to rotate display! The selected theme handles landscape/portrait orientation
-  DISPLAY_WIDTH: 320  # Do not change unless you have a good reason
-  DISPLAY_HEIGHT: 480  # Do not change unless you have a good reason
-
-
