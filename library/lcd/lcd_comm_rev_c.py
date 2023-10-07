@@ -129,9 +129,11 @@ class SubRevision(Enum):
         self.command = command
 
 
+# This class is for Turing Smart Screen 5" screens
 class LcdCommRevC(LcdComm):
     def __init__(self, com_port: str = "AUTO", display_width: int = 480, display_height: int = 800,
                  update_queue: queue.Queue = None):
+        logger.debug("HW revision: C")
         LcdComm.__init__(self, com_port, display_width, display_height, update_queue)
         self.openSerial()
 
@@ -166,7 +168,7 @@ class LcdCommRevC(LcdComm):
         message = bytearray()
 
         if cmd != Command.SEND_PAYLOAD:
-            message = cmd.value
+            message = bytearray(cmd.value)
 
         # logger.debug("Command: {}".format(cmd.name))
 
@@ -211,6 +213,7 @@ class LcdCommRevC(LcdComm):
 
     def Reset(self):
         logger.info("Display reset (COM port may change)...")
+        # Reset command bypasses queue because it is run when queue threads are not yet started
         self._send_command(Command.RESTART, bypass_queue=True)
         self.closeSerial()
         # Wait for display reset then reconnect

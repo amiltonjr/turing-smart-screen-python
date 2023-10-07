@@ -16,10 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import copy
+import math
 import os
 import queue
 import sys
 import threading
+import time
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from typing import Tuple
@@ -60,6 +63,12 @@ class LcdComm(ABC):
         # mixed with other requests in-between
         self.update_queue_mutex = threading.Lock()
 
+        # Create a cache to store opened images, to avoid opening and loading from the filesystem every time
+        self.image_cache = {}  # { key=path, value=PIL.Image }
+
+        # Create a cache to store opened fonts, to avoid opening and loading from the filesystem every time
+        self.font_cache = {}  # { key=(font, size), value=PIL.ImageFont }
+
     def get_width(self) -> int:
         if self.orientation == Orientation.PORTRAIT or self.orientation == Orientation.REVERSE_PORTRAIT:
             return self.display_width
@@ -74,19 +83,27 @@ class LcdComm(ABC):
 
     def openSerial(self):
         if self.com_port == 'AUTO':
-            lcd_com_port = self.auto_detect_com_port()
-            if not lcd_com_port:
-                logger.error("Cannot find COM port automatically, please run Configuration again and select COM port manually")
+            self.com_port = self.auto_detect_com_port()
+            if not self.com_port:
+                logger.error(
+                    "Cannot find COM port automatically, please run Configuration again and select COM port manually")
                 try:
                     sys.exit(0)
                 except:
                     os._exit(0)
-            logger.debug(f"Auto detected COM port: {lcd_com_port}")
-            self.lcd_serial = serial.Serial(lcd_com_port, 115200, timeout=1, rtscts=1)
+            else:
+                logger.debug(f"Auto detected COM port: {self.com_port}")
         else:
-            lcd_com_port = self.com_port
-            logger.debug(f"Static COM port: {lcd_com_port}")
-            self.lcd_serial = serial.Serial(lcd_com_port, 115200, timeout=1, rtscts=1)
+            logger.debug(f"Static COM port: {self.com_port}")
+
+        try:
+            self.lcd_serial = serial.Serial(self.com_port, 115200, timeout=1, rtscts=1)
+        except Exception as e:
+            logger.error(f"Cannot open COM port {self.com_port}: {e}")
+            try:
+                sys.exit(0)
+            except:
+                os._exit(0)
 
     def closeSerial(self):
         try:
@@ -95,12 +112,7 @@ class LcdComm(ABC):
             pass
 
     def WriteData(self, byteBuffer: bytearray):
-        try:
-            self.lcd_serial.write(bytes(byteBuffer))
-        except serial.serialutil.SerialTimeoutException:
-            # We timed-out trying to write to our device, slow things down.
-            logger.warning("(Write data) Too fast! Slow down!")
-
+        self.WriteLine(bytes(byteBuffer))
 
     def SendLine(self, line: bytes):
         if self.update_queue:
@@ -116,14 +128,31 @@ class LcdComm(ABC):
         except serial.serialutil.SerialTimeoutException:
             # We timed-out trying to write to our device, slow things down.
             logger.warning("(Write line) Too fast! Slow down!")
+        except serial.serialutil.SerialException:
+            # Error writing data to device: close and reopen serial port, try to write again
+            logger.error(
+                "SerialException: Failed to send serial data to device. Closing and reopening COM port before retrying once.")
+            self.closeSerial()
+            time.sleep(1)
+            self.openSerial()
+            self.lcd_serial.write(line)
 
     def ReadData(self, readSize: int):
         try:
             response = self.lcd_serial.read(readSize)
-            #logger.debug("Received: [{}]".format(str(response, 'utf-8')))
-        except serial.serialutil.SerialException:
-            # We timed-out trying to read to our device, slow things down.
+            # logger.debug("Received: [{}]".format(str(response, 'utf-8')))
+            return response
+        except serial.serialutil.SerialTimeoutException:
+            # We timed-out trying to read from our device, slow things down.
             logger.warning("(Read data) Too fast! Slow down!")
+        except serial.serialutil.SerialException:
+            # Error writing data to device: close and reopen serial port, try to read again
+            logger.error(
+                "SerialException: Failed to read serial data from device. Closing and reopening COM port before retrying once.")
+            self.closeSerial()
+            time.sleep(1)
+            self.openSerial()
+            return self.lcd_serial.read(readSize)
 
     @staticmethod
     @abstractmethod
@@ -172,7 +201,7 @@ class LcdComm(ABC):
         pass
 
     def DisplayBitmap(self, bitmap_path: str, x: int = 0, y: int = 0, width: int = 0, height: int = 0):
-        image = Image.open(bitmap_path)
+        image = self.open_image(bitmap_path)
         self.DisplayPILImage(image, x, y, width, height)
 
     def DisplayText(
@@ -185,7 +214,8 @@ class LcdComm(ABC):
             font_color: Tuple[int, int, int] = (0, 0, 0),
             background_color: Tuple[int, int, int] = (255, 255, 255),
             background_image: str = None,
-            align: str = 'left'
+            align: str = 'left',
+            anchor: str = None,
     ):
         # Convert text to bitmap using PIL and display it
         # Provide the background image path to display text with transparent background
@@ -212,24 +242,33 @@ class LcdComm(ABC):
             )
         else:
             # The text bitmap is created from provided background image : text with transparent background
-            text_image = Image.open(background_image)
+            text_image = self.open_image(background_image)
 
         # Get text bounding box
-        font = ImageFont.truetype("./res/fonts/" + font, font_size)
+        if (font, font_size) not in self.font_cache:
+            self.font_cache[(font, font_size)] = ImageFont.truetype("./res/fonts/" + font, font_size)
+        font = self.font_cache[(font, font_size)]
         d = ImageDraw.Draw(text_image)
-        left, top, text_width, text_height = d.textbbox((0, 0), text, font=font)
+        left, top, right, bottom = d.textbbox((x, y), text, font=font, align=align, anchor=anchor)
 
-        # Draw text with specified color & font, remove left/top margins
-        d.text((x - left, y - top), text, font=font, fill=font_color, align=align)
+        # textbbox may return float values, which is not good for the bitmap operations below.
+        # Let's extend the bounding box to the next whole pixel in all directions
+        left, top = math.floor(left), math.floor(top)
+        right, bottom = math.ceil(right), math.ceil(bottom)
 
-        # Crop text bitmap to keep only the text (also crop if text overflows display)
-        text_image = text_image.crop(box=(
-            x, y,
-            min(x + text_width - left, self.get_width()),
-            min(y + text_height - top, self.get_height())
-        ))
+        # Draw text onto the background image with specified color & font
+        d.text((x, y), text, font=font, fill=font_color, align=align, anchor=anchor)
 
-        self.DisplayPILImage(text_image, x, y)
+        # Restrict the dimensions if they overflow the display size
+        left = max(left, 0)
+        top = max(top, 0)
+        right = min(right, self.get_width())
+        bottom = min(bottom, self.get_height())
+
+        # Crop text bitmap to keep only the text
+        text_image = text_image.crop(box=(left, top, right, bottom))
+
+        self.DisplayPILImage(text_image, left, top)
 
     def DisplayProgressBar(self, x: int, y: int, width: int, height: int, min_value: int = 0, max_value: int = 100,
                            value: int = 50,
@@ -264,7 +303,7 @@ class LcdComm(ABC):
             bar_image = Image.new('RGB', (width, height), background_color)
         else:
             # A bitmap is created from provided background image
-            bar_image = Image.open(background_image)
+            bar_image = self.open_image(background_image)
 
             # Crop bitmap to keep only the progress bar background
             bar_image = bar_image.crop(box=(x, y, x + width, y + height))
@@ -311,10 +350,16 @@ class LcdComm(ABC):
         if isinstance(font_color, str):
             font_color = tuple(map(int, font_color.split(', ')))
 
+        if angle_start % 361 == angle_end % 361:
+            if clockwise:
+                angle_start += 0.1
+            else:
+                angle_end += 0.1
+
         assert xc - radius >= 0 and xc + radius <= self.get_width(), 'Progress bar width exceeds display width'
         assert yc - radius >= 0 and yc + radius <= self.get_height(), 'Progress bar height exceeds display height'
-        assert 0 < bar_width <= radius, 'Progress bar linewidth must be > 0 and <= radius'
-        assert angle_end % 361 != angle_start % 361, 'Change your angles values'
+        assert 0 < bar_width <= radius, f'Progress bar linewidth is {bar_width}, must be > 0 and <= radius'
+        assert angle_end % 361 != angle_start % 361, f'Invalid angles values, start = {angle_start}, end = {angle_end}'
         assert isinstance(angle_steps, int), 'angle_steps value must be an integer'
         assert angle_sep >= 0, 'Provide an angle_sep value >= 0'
         assert angle_steps > 0, 'Provide an angle_step value > 0'
@@ -336,13 +381,13 @@ class LcdComm(ABC):
             bar_image = Image.new('RGB', (diameter, diameter), background_color)
         else:
             # A bitmap is created from provided background image
-            bar_image = Image.open(background_image)
+            bar_image = self.open_image(background_image)
 
             # Crop bitmap to keep only the progress bar background
             bar_image = bar_image.crop(box=bbox)
 
         # Draw progress bar
-        pct = (value - min_value)/(max_value - min_value)
+        pct = (value - min_value) / (max_value - min_value)
         draw = ImageDraw.Draw(bar_image)
 
         # PIL arc method uses angles with
@@ -428,3 +473,10 @@ class LcdComm(ABC):
                       font=font, fill=font_color)
 
         self.DisplayPILImage(bar_image, xc - radius, yc - radius)
+
+    # Load image from the filesystem, or get from the cache if it has already been loaded previously
+    def open_image(self, bitmap_path: str) -> Image:
+        if bitmap_path not in self.image_cache:
+            logger.debug("Bitmap " + bitmap_path + " is now loaded in the cache")
+            self.image_cache[bitmap_path] = Image.open(bitmap_path)
+        return copy.copy(self.image_cache[bitmap_path])

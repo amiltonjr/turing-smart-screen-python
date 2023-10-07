@@ -26,7 +26,7 @@
 import os
 import sys
 
-MIN_PYTHON = (3, 7)
+MIN_PYTHON = (3, 8)
 if sys.version_info < MIN_PYTHON:
     print("[ERROR] Python %s.%s or later is required." % MIN_PYTHON)
     try:
@@ -207,6 +207,7 @@ if __name__ == "__main__":
     scheduler.DiskStats()
     scheduler.NetStats()
     scheduler.DateStats()
+    scheduler.CustomStats()
     scheduler.QueueHandler()
 
     if tray_icon and platform.system() == "Darwin":  # macOS-specific

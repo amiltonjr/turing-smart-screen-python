@@ -48,9 +48,11 @@ class SubRevision(IntEnum):
     A12 = 0xA12  # HW revision "flagship" - brightness 0-255
 
 
+# This class is for XuanFang (rev. B & flagship) 3.5" screens
 class LcdCommRevB(LcdComm):
     def __init__(self, com_port: str = "AUTO", display_width: int = 320, display_height: int = 480,
                  update_queue: queue.Queue = None):
+        logger.debug("HW revision: B")
         LcdComm.__init__(self, com_port, display_width, display_height, update_queue)
         self.openSerial()
         self.sub_revision = SubRevision.A01  # Run a Hello command to detect correct sub-rev.
@@ -72,6 +74,7 @@ class LcdCommRevB(LcdComm):
         for com_port in com_ports:
             if com_port.serial_number == "2017-2-25":
                 auto_com_port = com_port.device
+                break
 
         return auto_com_port
 
@@ -108,6 +111,7 @@ class LcdCommRevB(LcdComm):
         # This command reads LCD answer on serial link, so it bypasses the queue
         self.SendCommand(Command.HELLO, payload=hello, bypass_queue=True)
         response = self.lcd_serial.read(10)
+        self.lcd_serial.flushInput()
 
         if len(response) != 10:
             logger.warning("Device not recognised (short response to HELLO)")
@@ -131,17 +135,17 @@ class LcdCommRevB(LcdComm):
             else:
                 logger.warning("Display returned unknown sub-revision on Hello answer")
 
-        logger.debug("HW sub-revision: %s" % (hex(self.sub_revision)))
+        logger.debug("HW sub-revision: %s" % (str(self.sub_revision)))
 
     def InitializeComm(self):
         self._hello()
 
     def Reset(self):
-        # HW revision B does not implement a command to reset it
-        pass
+        # HW revision B does not implement a command to reset it: clear display instead
+        self.Clear()
 
     def Clear(self):
-        # This hardware does not implement a Clear command: display a blank image on the whole screen
+        # HW revision B does not implement a Clear command: display a blank image on the whole screen
         # Force an orientation in case the screen is currently configured with one different from the theme
         backup_orientation = self.orientation
         self.SetOrientation(orientation=Orientation.PORTRAIT)
@@ -182,7 +186,7 @@ class LcdCommRevB(LcdComm):
         else:
             logger.info("Only HW revision 'flagship' supports backplate LED color setting")
 
-    def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT, new_width: int = 320, new_height: int = 480):
+    def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT):
         # In revision B, basic orientations (portrait / landscape) are managed by the display
         # The reverse orientations (reverse portrait / reverse landscape) are software-managed
         self.orientation = orientation
@@ -219,6 +223,7 @@ class LcdCommRevB(LcdComm):
             (x0, y0) = (x, y)
             (x1, y1) = (x + image_width - 1, y + image_height - 1)
         else:
+            # Reverse landscape/portrait orientations are software-managed: get new coordinates
             (x0, y0) = (self.get_width() - x - image_width, self.get_height() - y - image_height)
             (x1, y1) = (self.get_width() - x - 1, self.get_height() - y - 1)
 

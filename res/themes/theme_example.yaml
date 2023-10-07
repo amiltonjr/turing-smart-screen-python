@@ -4,6 +4,11 @@
 
 # NOTE: Every HW sensor is hidden in this example, to show a sensor change 'SHOW: False' to 'SHOW: True'
 ---
+# If you indicate @ with your GitHub username, there will be a hyperlink to your GitHub profile in the Config. Wizard
+# Otherwise, you can just indicate any text e.g. author: "Your Name"
+# You can also remove the line if you don't want to be credited
+author: "@your_GitHub_username"
+
 display:
   # Specify the display size in inch for this theme: 3.5" (default) or 5"
   DISPLAY_SIZE: 3.5"
@@ -81,6 +86,27 @@ STATS:
         MAX_VALUE: 100
         BAR_COLOR: 255, 0, 0
         BAR_OUTLINE: False
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 100
+        Y: 110
+        RADIUS: 40
+        WIDTH: 10
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 120
+        ANGLE_END: 60
+        ANGLE_STEPS: 20
+        ANGLE_SEP: 5
+        CLOCKWISE: True
+        BAR_COLOR: 0, 255, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
     FREQUENCY:
@@ -166,6 +192,27 @@ STATS:
         BAR_OUTLINE: False
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 141
+        Y: 275
+        RADIUS: 28
+        WIDTH: 8
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 110
+        ANGLE_END: 70
+        ANGLE_STEPS: 1
+        ANGLE_SEP: 25
+        CLOCKWISE: True
+        BAR_COLOR: 255, 0, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
       TEXT:
         SHOW: False
         SHOW_UNIT: True
@@ -189,6 +236,27 @@ STATS:
         BAR_OUTLINE: False
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 141
+        Y: 275
+        RADIUS: 28
+        WIDTH: 8
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 110
+        ANGLE_END: 70
+        ANGLE_STEPS: 1
+        ANGLE_SEP: 25
+        CLOCKWISE: True
+        BAR_COLOR: 255, 0, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
       TEXT:
         SHOW: False
         SHOW_UNIT: True
@@ -200,6 +268,17 @@ STATS:
         # BACKGROUND_COLOR: 132, 154, 165
         BACKGROUND_IMAGE: background.png
     TEMPERATURE:
+      TEXT:
+        SHOW: False
+        SHOW_UNIT: True
+        X: 115
+        Y: 231
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
+        # BACKGROUND_COLOR: 50, 50, 50
+        BACKGROUND_IMAGE: background.png
+    FPS:
       TEXT:
         SHOW: False
         SHOW_UNIT: True
@@ -228,6 +307,27 @@ STATS:
         BAR_OUTLINE: False
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 141
+        Y: 275
+        RADIUS: 28
+        WIDTH: 8
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 110
+        ANGLE_END: 70
+        ANGLE_STEPS: 1
+        ANGLE_SEP: 25
+        CLOCKWISE: True
+        BAR_COLOR: 255, 0, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
     VIRTUAL:
       GRAPH:
         SHOW: False
@@ -241,6 +341,27 @@ STATS:
         BAR_OUTLINE: False
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 141
+        Y: 275
+        RADIUS: 28
+        WIDTH: 8
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 110
+        ANGLE_END: 70
+        ANGLE_STEPS: 1
+        ANGLE_SEP: 25
+        CLOCKWISE: True
+        BAR_COLOR: 255, 0, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
       USED:
         SHOW: False
         SHOW_UNIT: True
@@ -252,6 +373,16 @@ STATS:
         # BACKGROUND_COLOR: 132, 154, 165
         BACKGROUND_IMAGE: background.png
       FREE:
+        SHOW: FALSE
+        SHOW_UNIT: True
+        X: 182
+        Y: 129
+        FONT: jetbrains-mono/JetBrainsMono-Bold.ttf
+        FONT_SIZE: 23
+        FONT_COLOR: 255, 255, 255
+        # BACKGROUND_COLOR: 132, 154, 165
+        BACKGROUND_IMAGE: background.png
+      TOTAL:
         SHOW: FALSE
         SHOW_UNIT: True
         X: 182
@@ -284,6 +415,27 @@ STATS:
         MAX_VALUE: 100
         BAR_COLOR: 255, 0, 0
         BAR_OUTLINE: False
+        # BACKGROUND_COLOR: 0, 0, 0
+        BACKGROUND_IMAGE: background.png
+      RADIAL:
+        SHOW: False
+        X: 141
+        Y: 275
+        RADIUS: 28
+        WIDTH: 8
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        ANGLE_START: 110
+        ANGLE_END: 70
+        ANGLE_STEPS: 1
+        ANGLE_SEP: 25
+        CLOCKWISE: True
+        BAR_COLOR: 255, 0, 0
+        SHOW_TEXT: True
+        SHOW_UNIT: True
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 200, 200, 200
         # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
       TEXT:
