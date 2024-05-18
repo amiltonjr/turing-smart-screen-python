@@ -98,15 +98,24 @@ def sensors_fans_percent():
 class Cpu(sensors.Cpu):
     @staticmethod
     def percentage(interval: float) -> float:
-        return psutil.cpu_percent(interval=interval)
+        try:
+            return psutil.cpu_percent(interval=interval)
+        except:
+            return math.nan
 
     @staticmethod
     def frequency() -> float:
-        return psutil.cpu_freq().current
+        try:
+            return psutil.cpu_freq().current
+        except:
+            return math.nan
 
     @staticmethod
     def load() -> Tuple[float, float, float]:  # 1 / 5 / 15min avg (%):
-        return psutil.getloadavg()
+        try:
+            return psutil.getloadavg()
+        except:
+            return math.nan, math.nan, math.nan
 
     @staticmethod
     def temperature() -> float:
@@ -173,6 +182,16 @@ class Gpu(sensors.Gpu):
             return GpuAmd.fan_percent()
         elif DETECTED_GPU == GpuType.NVIDIA:
             return GpuNvidia.fan_percent()
+        else:
+            return math.nan
+
+    @staticmethod
+    def frequency() -> float:
+        global DETECTED_GPU
+        if DETECTED_GPU == GpuType.AMD:
+            return GpuAmd.frequency()
+        elif DETECTED_GPU == GpuType.NVIDIA:
+            return GpuNvidia.frequency()
         else:
             return math.nan
 
@@ -248,6 +267,11 @@ class GpuNvidia(sensors.Gpu):
         return math.nan
 
     @staticmethod
+    def frequency() -> float:
+        # Not supported by Python libraries
+        return math.nan
+
+    @staticmethod
     def is_available() -> bool:
         try:
             return len(GPUtil.getGPUs()) > 0
@@ -260,52 +284,43 @@ class GpuAmd(sensors.Gpu):
     def stats() -> Tuple[float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / temp (°C)
         if pyamdgpuinfo:
             # Unlike other sensors, AMD GPU with pyamdgpuinfo pulls in all the stats at once
-            i = 0
-            amd_gpus = []
-            while i < pyamdgpuinfo.detect_gpus():
-                amd_gpus.append(pyamdgpuinfo.get_gpu(i))
-                i = i + 1
+            pyamdgpuinfo.detect_gpus()
+            amd_gpu = pyamdgpuinfo.get_gpu(0)
 
             try:
-                memory_used_all = [item.query_vram_usage() for item in amd_gpus]
-                memory_used_bytes = sum(memory_used_all) / len(memory_used_all)
+                memory_used_bytes = amd_gpu.query_vram_usage()
                 memory_used = memory_used_bytes / 1000000
             except:
                 memory_used_bytes = math.nan
                 memory_used = math.nan
 
             try:
-                memory_total_all = [item.memory_info["vram_size"] for item in amd_gpus]
-                memory_total_bytes = sum(memory_total_all) / len(memory_total_all)
+                memory_total_bytes = amd_gpu.memory_info["vram_size"]
                 memory_percentage = (memory_used_bytes / memory_total_bytes) * 100
             except:
                 memory_percentage = math.nan
 
             try:
-                load_all = [item.query_load() for item in amd_gpus]
-                load = (sum(load_all) / len(load_all)) * 100
+                load = amd_gpu.query_load()
             except:
                 load = math.nan
 
             try:
-                temperature_all = [item.query_temperature() for item in amd_gpus]
-                temperature = sum(temperature_all) / len(temperature_all)
+                temperature = amd_gpu.query_temperature()
             except:
                 temperature = math.nan
 
             return load, memory_percentage, memory_used, temperature
         elif pyadl:
-            amd_gpus = pyadl.ADLManager.getInstance().getDevices()
+            amd_gpu = pyadl.ADLManager.getInstance().getDevices()[0]
 
             try:
-                load_all = [item.getCurrentUsage() for item in amd_gpus]
-                load = (sum(load_all) / len(load_all))
+                load = amd_gpu.getCurrentUsage()
             except:
                 load = math.nan
 
             try:
-                temperature_all = [item.getCurrentTemperature() for item in amd_gpus]
-                temperature = sum(temperature_all) / len(temperature_all)
+                temperature = amd_gpu.getCurrentTemperature()
             except:
                 temperature = math.nan
 
@@ -320,16 +335,32 @@ class GpuAmd(sensors.Gpu):
     @staticmethod
     def fan_percent() -> float:
         try:
+            # Try with psutil fans
             fans = sensors_fans_percent()
             if fans:
                 for name, entries in fans.items():
                     for entry in entries:
                         if "gpu" in (entry.label or name):
                             return entry.current
+
+            # Try with pyadl if psutil did not find GPU fan
+            if pyadl:
+                return pyadl.ADLManager.getInstance().getDevices()[0].getCurrentFanSpeed(
+                    pyadl.ADL_DEVICE_FAN_SPEED_TYPE_PERCENTAGE)
         except:
             pass
 
         return math.nan
+
+    @staticmethod
+    def frequency() -> float:
+        if pyamdgpuinfo:
+            pyamdgpuinfo.detect_gpus()
+            return pyamdgpuinfo.get_gpu(0).query_sclk() / 1000000
+        elif pyadl:
+            return pyadl.ADLManager.getInstance().getDevices()[0].getCurrentEngineClock()
+        else:
+            return math.nan
 
     @staticmethod
     def is_available() -> bool:
@@ -347,37 +378,57 @@ class GpuAmd(sensors.Gpu):
 class Memory(sensors.Memory):
     @staticmethod
     def swap_percent() -> float:
-        return psutil.swap_memory().percent
+        try:
+            return psutil.swap_memory().percent
+        except:
+            return math.nan
 
     @staticmethod
     def virtual_percent() -> float:
-        return psutil.virtual_memory().percent
+        try:
+            return psutil.virtual_memory().percent
+        except:
+            return math.nan
 
     @staticmethod
     def virtual_used() -> int:  # In bytes
-        # Do not use psutil.virtual_memory().used: from https://psutil.readthedocs.io/en/latest/#memory
-        # "It is calculated differently depending on the platform and designed for informational purposes only"
-        return psutil.virtual_memory().total - psutil.virtual_memory().available
+        try:
+            # Do not use psutil.virtual_memory().used: from https://psutil.readthedocs.io/en/latest/#memory
+            # "It is calculated differently depending on the platform and designed for informational purposes only"
+            return psutil.virtual_memory().total - psutil.virtual_memory().available
+        except:
+            return -1
 
     @staticmethod
     def virtual_free() -> int:  # In bytes
-        # Do not use psutil.virtual_memory().free: from https://psutil.readthedocs.io/en/latest/#memory
-        # "note that this doesn’t reflect the actual memory available (use available instead)."
-        return psutil.virtual_memory().available
-
+        try:
+            # Do not use psutil.virtual_memory().free: from https://psutil.readthedocs.io/en/latest/#memory
+            # "note that this doesn’t reflect the actual memory available (use available instead)."
+            return psutil.virtual_memory().available
+        except:
+            return -1
 
 class Disk(sensors.Disk):
     @staticmethod
     def disk_usage_percent() -> float:
-        return psutil.disk_usage("/").percent
+        try:
+            return psutil.disk_usage("/").percent
+        except:
+            return math.nan
 
     @staticmethod
     def disk_used() -> int:  # In bytes
-        return psutil.disk_usage("/").used
+        try:
+            return psutil.disk_usage("/").used
+        except:
+            return -1
 
     @staticmethod
     def disk_free() -> int:  # In bytes
-        return psutil.disk_usage("/").free
+        try:
+            return psutil.disk_usage("/").free
+        except:
+            return -1
 
 
 class Net(sensors.Net):
@@ -385,27 +436,30 @@ class Net(sensors.Net):
     def stats(if_name, interval) -> Tuple[
         int, int, int, int]:  # up rate (B/s), uploaded (B), dl rate (B/s), downloaded (B)
         global PNIC_BEFORE
-        # Get current counters
-        pnic_after = psutil.net_io_counters(pernic=True)
+        try:
+            # Get current counters
+            pnic_after = psutil.net_io_counters(pernic=True)
 
-        upload_rate = 0
-        uploaded = 0
-        download_rate = 0
-        downloaded = 0
+            upload_rate = 0
+            uploaded = 0
+            download_rate = 0
+            downloaded = 0
 
-        if if_name != "":
-            if if_name in pnic_after:
-                try:
-                    upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
-                    uploaded = pnic_after[if_name].bytes_sent
-                    download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
-                    downloaded = pnic_after[if_name].bytes_recv
-                except:
-                    # Interface might not be in PNIC_BEFORE for now
-                    pass
+            if if_name != "":
+                if if_name in pnic_after:
+                    try:
+                        upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
+                        uploaded = pnic_after[if_name].bytes_sent
+                        download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
+                        downloaded = pnic_after[if_name].bytes_recv
+                    except:
+                        # Interface might not be in PNIC_BEFORE for now
+                        pass
 
-                PNIC_BEFORE.update({if_name: pnic_after[if_name]})
-            else:
-                logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
+                    PNIC_BEFORE.update({if_name: pnic_after[if_name]})
+                else:
+                    logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
 
-        return upload_rate, uploaded, download_rate, downloaded
+            return upload_rate, uploaded, download_rate, downloaded
+        except:
+            return -1, -1, -1, -1
