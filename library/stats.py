@@ -37,9 +37,10 @@ from library.log import logger
 
 DEFAULT_HISTORY_SIZE = 10
 
-ETH_CARD = config.CONFIG_DATA["config"]["ETH"]
-WLO_CARD = config.CONFIG_DATA["config"]["WLO"]
-HW_SENSORS = config.CONFIG_DATA["config"]["HW_SENSORS"]
+ETH_CARD = config.CONFIG_DATA["config"].get("ETH", "")
+WLO_CARD = config.CONFIG_DATA["config"].get("WLO", "")
+HW_SENSORS = config.CONFIG_DATA["config"].get("HW_SENSORS", "AUTO")
+CPU_FAN = config.CONFIG_DATA["config"].get("CPU_FAN", "AUTO")
 
 if HW_SENSORS == "PYTHON":
     if platform.system() == 'Windows':
@@ -98,12 +99,15 @@ def display_themed_value(theme_data, value, min_size=0, unit=''):
         text=text,
         x=theme_data.get("X", 0),
         y=theme_data.get("Y", 0),
+        width=theme_data.get("WIDTH", 0),
+        height=theme_data.get("HEIGHT", 0),
         font=theme_data.get("FONT", "roboto-mono/RobotoMono-Regular.ttf"),
         font_size=theme_data.get("FONT_SIZE", 10),
         font_color=theme_data.get("FONT_COLOR", (0, 0, 0)),
         background_color=theme_data.get("BACKGROUND_COLOR", (255, 255, 255)),
         background_image=get_theme_file_path(theme_data.get("BACKGROUND_IMAGE", None)),
-        anchor="lt"
+        align=theme_data.get("ALIGN", "left"),
+        anchor=theme_data.get("ANCHOR", "lt"),
     )
 
 
@@ -215,6 +219,7 @@ def display_themed_line_graph(theme_data, values):
         max_value=theme_data.get("MAX_VALUE", 100),
         autoscale=theme_data.get("AUTOSCALE", False),
         line_color=line_color,
+        line_width=theme_data.get("LINE_WIDTH", 2),
         graph_axis=theme_data.get("AXIS", False),
         axis_color=theme_data.get("AXIS_COLOR", line_color),  # If no color specified, use line color for axis
         background_color=theme_data.get("BACKGROUND_COLOR", (0, 0, 0)),
@@ -313,13 +318,17 @@ class CPU:
                 cpu_temp_line_graph_data['SHOW'] = False
 
         display_themed_temperature_value(cpu_temp_text_data, temperature)
-        display_themed_progress_bar(cpu_temp_radial_data, temperature)
-        display_themed_temperature_radial_bar(cpu_temp_graph_data, temperature)
+        display_themed_progress_bar(cpu_temp_graph_data, temperature)
+        display_themed_temperature_radial_bar(cpu_temp_radial_data, temperature)
         display_themed_line_graph(cpu_temp_line_graph_data, cls.last_values_cpu_temperature)
 
     @classmethod
     def fan_speed(cls):
-        fan_percent = sensors.Cpu.fan_percent()
+        if CPU_FAN != "AUTO":
+            fan_percent = sensors.Cpu.fan_percent(CPU_FAN)
+        else:
+            fan_percent = sensors.Cpu.fan_percent()
+
         save_last_value(fan_percent, cls.last_values_cpu_fan_speed,
                         config.THEME_DATA['STATS']['CPU']['FAN_SPEED']['LINE_GRAPH'].get("HISTORY_SIZE",
                                                                                          DEFAULT_HISTORY_SIZE))
@@ -333,7 +342,10 @@ class CPU:
             fan_percent = 0
             if cpu_fan_text_data['SHOW'] or cpu_fan_radial_data['SHOW'] or cpu_fan_graph_data[
                 'SHOW'] or cpu_fan_line_graph_data['SHOW']:
-                logger.warning("Your CPU Fan Speed is not supported yet")
+                if sys.platform == "win32":
+                    logger.warning("Your CPU Fan sensor could not be auto-detected")
+                else:
+                    logger.warning("Your CPU Fan sensor could not be auto-detected. Select it from Configuration UI.")
                 cpu_fan_text_data['SHOW'] = False
                 cpu_fan_radial_data['SHOW'] = False
                 cpu_fan_graph_data['SHOW'] = False
