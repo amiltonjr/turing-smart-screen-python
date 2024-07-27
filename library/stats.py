@@ -30,6 +30,7 @@ from typing import List
 
 import babel.dates
 from psutil._common import bytes2human
+from uptime import uptime
 
 import library.config as config
 from library.display import display
@@ -86,6 +87,9 @@ def get_theme_file_path(name):
 
 def display_themed_value(theme_data, value, min_size=0, unit=''):
     if not theme_data.get("SHOW", False):
+        return
+
+    if value is None:
         return
 
     # overridable MIN_SIZE from theme with backward compatibility
@@ -367,7 +371,7 @@ class Gpu:
 
     @classmethod
     def stats(cls):
-        load, memory_percentage, memory_used_mb, temperature = sensors.Gpu.stats()
+        load, memory_percentage, memory_used_mb, total_memory_mb, temperature = sensors.Gpu.stats()
         fps = sensors.Gpu.fps()
         fan_percent = sensors.Gpu.fan_percent()
         freq_ghz = sensors.Gpu.frequency() / 1000
@@ -468,6 +472,21 @@ class Gpu:
             value=int(memory_used_mb),
             min_size=5,
             unit=" M"
+        )
+
+        # GPU mem. total memory (M)
+        gpu_mem_total_text_data = theme_gpu_data['MEMORY_TOTAL']['TEXT']
+        if math.isnan(memory_used_mb):
+            memory_used_mb = 0
+            if gpu_mem_total_text_data['SHOW']:
+                logger.warning("Your GPU total memory capacity (M) is not supported yet")
+                gpu_mem_total_text_data['SHOW'] = False
+
+        display_themed_value(
+            theme_data=gpu_mem_total_text_data,
+            value=int(total_memory_mb),
+            min_size=5,  # Adjust min_size as necessary for your display
+            unit=" M"  # Assuming the unit is in Megabytes
         )
 
         # GPU temperature (°C)
@@ -732,6 +751,32 @@ class Date:
         display_themed_value(
             theme_data=hour_theme_data,
             value=f"{babel.dates.format_time(date_now, format=time_format, locale=lc_time)}"
+        )
+
+
+class SystemUptime:
+    @staticmethod
+    def stats():
+        if HW_SENSORS == "STATIC":
+            # For static sensors, use predefined uptime
+            uptimesec = 4294036
+        else:
+            uptimesec = int(uptime())
+
+        uptimeformatted = str(datetime.timedelta(seconds=uptimesec))
+
+        systemuptime_theme_data = config.THEME_DATA['STATS']['UPTIME']
+
+        systemuptime_sec_theme_data = systemuptime_theme_data['SECONDS']['TEXT']
+        display_themed_value(
+            theme_data=systemuptime_sec_theme_data,
+            value=uptimesec
+        )
+
+        systemuptime_formatted_theme_data = systemuptime_theme_data['FORMATTED']['TEXT']
+        display_themed_value(
+            theme_data=systemuptime_formatted_theme_data,
+            value=uptimeformatted
         )
 
 
