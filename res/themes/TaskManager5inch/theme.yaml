@@ -96,7 +96,6 @@ STATS:
         AUTOSCALE: True
         LINE_COLOR: 0, 128, 192
         AXIS: False
-        # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
       TEXT:
         SHOW: True
@@ -128,7 +127,6 @@ STATS:
         FONT: roboto-mono/RobotoMono-Regular.ttf
         FONT_SIZE: 20
         FONT_COLOR: 0, 0, 0
-        # BACKGROUND_COLOR: 132, 152, 165
         BACKGROUND_IMAGE: background.png
   GPU:
     INTERVAL: 1
@@ -145,8 +143,6 @@ STATS:
         AUTOSCALE: False
         LINE_COLOR: 0, 64, 128
         AXIS: False
-        AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
       TEXT:
         SHOW: True
@@ -171,7 +167,8 @@ STATS:
         LINE_COLOR: 61, 184, 225
         AXIS: True
         AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
+        AXIS_FONT: roboto/Roboto-Black.ttf
+        AXIS_FONT_SIZE: 10
         BACKGROUND_IMAGE: background.png
     TEMPERATURE:
       LINE_GRAPH:
@@ -187,7 +184,8 @@ STATS:
         LINE_COLOR: 61, 184, 225
         AXIS: True
         AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
+        AXIS_FONT: roboto/Roboto-Black.ttf
+        AXIS_FONT_SIZE: 10
         BACKGROUND_IMAGE: background.png
     FPS:
       LINE_GRAPH:
@@ -203,7 +201,8 @@ STATS:
         LINE_COLOR: 61, 184, 225
         AXIS: True
         AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
+        AXIS_FONT: roboto/Roboto-Black.ttf
+        AXIS_FONT_SIZE: 10
         BACKGROUND_IMAGE: background.png
     FAN_SPEED:
       LINE_GRAPH:
@@ -219,7 +218,8 @@ STATS:
         LINE_COLOR: 61, 184, 225
         AXIS: True
         AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
+        AXIS_FONT: roboto/Roboto-Black.ttf
+        AXIS_FONT_SIZE: 10
         BACKGROUND_IMAGE: background.png
   MEMORY:
     INTERVAL: 5
@@ -236,8 +236,6 @@ STATS:
         AUTOSCALE: False
         LINE_COLOR: 255, 128, 255
         AXIS: False
-        AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
       PERCENT_TEXT:
         SHOW: True
@@ -272,8 +270,6 @@ STATS:
         AUTOSCALE: False
         LINE_COLOR: 0, 255, 0
         AXIS: False
-        AXIS_COLOR: 255, 135, 0
-        # BACKGROUND_COLOR: 0, 0, 0
         BACKGROUND_IMAGE: background.png
       PERCENT_TEXT:
         SHOW: True
@@ -300,8 +296,6 @@ STATS:
           AUTOSCALE: True
           LINE_COLOR: 128, 0, 0
           AXIS: False
-          AXIS_COLOR: 255, 135, 0
-          # BACKGROUND_COLOR: 0, 0, 0
           BACKGROUND_IMAGE: background.png
         TEXT:
           SHOW: True
@@ -333,8 +327,9 @@ STATS:
         FONT: roboto-mono/RobotoMono-Regular.ttf
         FONT_SIZE: 26
         FONT_COLOR: 0, 0, 0
-        # BACKGROUND_COLOR: 50, 50, 50
         BACKGROUND_IMAGE: background.png
+        WIDTH: 220
+        ANCHOR: lt
     HOUR: # Format (12/24h, timezone translations) will match your computer locale
       TEXT:
         FORMAT: medium # short (6:48 PM) / medium (6:48:53 PM) / long (6:48:53 PM UTC) / full (6:48:53 PM Coordinated Universal Time)
@@ -344,5 +339,6 @@ STATS:
         FONT: roboto-mono/RobotoMono-Regular.ttf
         FONT_SIZE: 26
         FONT_COLOR: 0, 0, 0
-        # BACKGROUND_COLOR: 50, 50, 50
         BACKGROUND_IMAGE: background.png
+        WIDTH: 220
+        ANCHOR: lt
