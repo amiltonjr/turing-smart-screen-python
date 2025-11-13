@@ -1,7 +1,9 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
 # turing-smart-screen-python - a Python system monitor and library for USB-C displays like Turing Smart Screen or XuanFang
 # https://github.com/mathoudebine/turing-smart-screen-python/
-
-# Copyright (C) 2021-2023  Matthieu Houdebine (mathoudebine)
+#
+# Copyright (C) 2021 Matthieu Houdebine (mathoudebine)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -84,10 +86,19 @@ def sensors_fans():
     for base in basenames:
         try:
             current_rpm = int(bcat(base + '_input'))
+
             try:
                 max_rpm = int(bcat(base + '_max'))
             except:
-                max_rpm = 1500  # Approximated: max fan speed is 1500 RPM
+                max_rpm = False  # Real maximum speed not found
+            if not max_rpm:
+                if current_rpm > 2200:
+                    max_rpm = 3000  # AIO Pumps are usualy 3000 RPM
+                elif current_rpm > 1500:
+                    max_rpm = 2200  # High speed fans are usualy 2200 RPM
+                else:
+                    max_rpm = 1500  # Approximated: max fan speed is 1500 RPM
+
             try:
                 min_rpm = int(bcat(base + '_min'))
             except:
