@@ -21,9 +21,9 @@ jobs:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up Python 3.x
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: "3.13"
 
@@ -67,7 +67,7 @@ jobs:
         python3 tools/theme-preview-generator.py
 
     - name: Commit theme previews
-      uses: stefanzweifel/git-auto-commit-action@v5
+      uses: stefanzweifel/git-auto-commit-action@v7
       with:
         commit_message: "[GitHub Actions Bot] Update theme previews"
         file_pattern: 'res/themes/*/preview.png res/themes/themes.md'

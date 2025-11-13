@@ -60,10 +60,12 @@ config:
 
 display:
   # Display revision:
-  # - A    for Turing 3.5" and UsbPCMonitor 3.5"/5"
-  # - B    for Xuanfang 3.5" (inc. flagship)
-  # - C    for Turing 2.1"/5"/8.8"
-  # - D    for Kipye Qiye Smart Display 3.5"
+  # - A         for Turing 3.5" and UsbPCMonitor 3.5"/5"
+  # - B         for Xuanfang 3.5" (inc. flagship)
+  # - C         for Turing 2.1"/2.8"/5"/8.8"
+  # - D         for Kipye Qiye Smart Display 3.5"
+  # - WEACT_A   for WeAct Studio Display FS V1 3.5"
+  # - WEACT_B   for WeAct Studio Display FS V1 0.96"
   # - SIMU for simulated display (image written in screencap.png). Width & height will be detected from the theme
   # To identify your smart screen: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Hardware-revisions
   REVISION: A
@@ -77,3 +79,9 @@ display:
   # Set to true to reverse display orientation (landscape <-> reverse landscape, portrait <-> reverse portrait)
   # Note: Display basic orientation (portrait or landscape) is defined by the theme you have selected
   DISPLAY_REVERSE: false
+
+  # Reset display on startup: true/false
+  # By default, this program resets the display on startup, in case it is in a degraded state from previous runs.
+  # This behavior causes the display to disconnect/reconnect, and the COM port to change.
+  # On some displays (like rev. A) it can be an issue, in this case change the value to "false".
+  RESET_ON_STARTUP: true
