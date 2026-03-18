@@ -312,9 +312,68 @@ class GpuNvidia(sensors.Gpu):
 
 
 class GpuAmd(sensors.Gpu):
+    _mac_stats_cache = {}
+    _mac_stats_time = 0
+
+    @classmethod
+    def _get_mac_stats(cls):
+        import time
+        import subprocess
+        import re
+        
+        # 1-second cache to prevent display loop freezes due to excessive calls to ioreg
+        if time.time() - cls._mac_stats_time < 1.0 and cls._mac_stats_cache:
+            return cls._mac_stats_cache
+
+        stats = {}
+        try:
+            # -c IOAccelerator focuses on the GPU, making the search instantaneous
+            result = subprocess.run(['ioreg', '-r', '-c', 'IOAccelerator', '-l'], capture_output=True, text=True)
+            
+            for line in result.stdout.split('\n'):
+                if '"PerformanceStatistics"' in line:
+                    temp = re.search(r'"Temperature\(C\)"=(\d+)', line)
+                    load = re.search(r'"GPU Activity\(%\)"=(\d+)', line)
+                    if not load:
+                        load = re.search(r'"Device Utilization %"=(\d+)', line)
+                    mem_used = re.search(r'"inUseVidMemoryBytes"=(\d+)', line)
+                    mem_free = re.search(r'"vramFreeBytes"=(\d+)', line)
+                    clock = re.search(r'"Core Clock\(MHz\)"=(\d+)', line)
+                    fan = re.search(r'"Fan Speed\(%\)"=(\d+)', line)
+
+                    if temp: stats['temp'] = float(temp.group(1))
+                    if load: stats['load'] = float(load.group(1))
+                    if mem_used: stats['mem_used'] = float(mem_used.group(1)) / 1024 / 1024 # Convert to MB
+                    if mem_free: stats['mem_free'] = float(mem_free.group(1)) / 1024 / 1024 # Convert to MB
+                    if clock: stats['clock'] = float(clock.group(1))
+                    if fan: stats['fan'] = float(fan.group(1))
+                    break
+            
+            cls._mac_stats_cache = stats
+            cls._mac_stats_time = time.time()
+        except Exception:
+            pass
+        return stats
+
     @staticmethod
-    def stats() -> Tuple[
-        float, float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / total mem (Mb) / temp (°C)
+    def stats() -> Tuple[float, float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / total mem (Mb) / temp (°C)
+        if platform.system() == "Darwin":
+            mac_stats = GpuAmd._get_mac_stats()
+            if mac_stats:
+                load = mac_stats.get('load', math.nan)
+                mem_used = mac_stats.get('mem_used', math.nan)
+                mem_free = mac_stats.get('mem_free', math.nan)
+                temp = mac_stats.get('temp', math.nan)
+                
+                mem_total = math.nan
+                mem_percentage = math.nan
+                if not math.isnan(mem_used) and not math.isnan(mem_free):
+                    mem_total = mem_used + mem_free
+                    if mem_total > 0:
+                        mem_percentage = (mem_used / mem_total) * 100
+                        
+                return load, mem_percentage, mem_used, mem_total, temp
+
         if pyamdgpuinfo:
             # Unlike other sensors, AMD GPU with pyamdgpuinfo pulls in all the stats at once
             pyamdgpuinfo.detect_gpus()
@@ -365,6 +424,8 @@ class GpuAmd(sensors.Gpu):
 
             # GPU memory data not supported by pyadl
             return load, math.nan, math.nan, math.nan, temperature
+        
+        return math.nan, math.nan, math.nan, math.nan, math.nan
 
     @staticmethod
     def fps() -> int:
@@ -373,6 +434,10 @@ class GpuAmd(sensors.Gpu):
 
     @staticmethod
     def fan_percent() -> float:
+        if platform.system() == "Darwin":
+            mac_stats = GpuAmd._get_mac_stats()
+            return mac_stats.get('fan', math.nan)
+
         try:
             # Try with psutil fans
             fans = sensors_fans()
@@ -384,8 +449,7 @@ class GpuAmd(sensors.Gpu):
 
             # Try with pyadl if psutil did not find GPU fan
             if pyadl:
-                return pyadl.ADLManager.getInstance().getDevices()[0].getCurrentFanSpeed(
-                    pyadl.ADL_DEVICE_FAN_SPEED_TYPE_PERCENTAGE)
+                return pyadl.ADLManager.getInstance().getDevices()[0].getCurrentFanSpeed(pyadl.ADL_DEVICE_FAN_SPEED_TYPE_PERCENTAGE)
         except:
             pass
 
@@ -393,6 +457,10 @@ class GpuAmd(sensors.Gpu):
 
     @staticmethod
     def frequency() -> float:
+        if platform.system() == "Darwin":
+            mac_stats = GpuAmd._get_mac_stats()
+            return mac_stats.get('clock', math.nan)
+
         try:
             if pyamdgpuinfo:
                 pyamdgpuinfo.detect_gpus()
@@ -406,6 +474,9 @@ class GpuAmd(sensors.Gpu):
 
     @staticmethod
     def is_available() -> bool:
+        if platform.system() == "Darwin":
+            if GpuAmd._get_mac_stats():
+                return True
         try:
             if pyamdgpuinfo and pyamdgpuinfo.detect_gpus() > 0:
                 return True
