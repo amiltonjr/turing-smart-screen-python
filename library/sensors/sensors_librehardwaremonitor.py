@@ -193,18 +193,21 @@ class Cpu(sensors.Cpu):
             for sensor in cpu.Sensors:
                 if sensor.SensorType == Hardware.SensorType.Clock:
                     # Keep only real core clocks, ignore effective core clocks
-                    if "Core #" in str(sensor.Name) and "Effective" not in str(
-                            sensor.Name) and sensor.Value is not None:
+                    if "Core" in str(sensor.Name) and "Effective" not in str(sensor.Name) and sensor.Value is not None:
                         frequencies.append(float(sensor.Value))
 
             if frequencies:
-                # Take mean of all core clock as "CPU clock" (as it is done in Windows Task Manager Performance tab)
-                return mean(frequencies)
-        except:
+                # Take max of all core clock as "CPU clock" (as it is done in Windows Task Manager Performance tab)
+                return max(frequencies)
+        except Exception:
             pass
 
-        # Frequencies reading is not supported on this CPU
-        return math.nan
+        try:
+            # Fallback to psutil in case LHM fails
+            return float(psutil.cpu_freq().current)
+        except Exception:
+            # Frequencies reading is not supported on this CPU
+            return math.nan
 
     @staticmethod
     def load() -> Tuple[float, float, float]:  # 1 / 5 / 15min avg (%):
