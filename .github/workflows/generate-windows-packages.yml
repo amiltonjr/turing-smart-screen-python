@@ -36,7 +36,7 @@ jobs:
         "${{github.event.release.tag_name}}" | Out-File ".\dist\turing-system-monitor\version.txt"
 
     - name: Create InnoSetup installer from generated binaries
-      uses: Minionguyjpro/Inno-Setup-Action@v1.2.7
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.8
       with:
         path: tools/windows-installer/turing-system-monitor.iss
         options: /O+
@@ -44,30 +44,30 @@ jobs:
     - name: Create portable zip archive from generated binaries
       run: |
         Remove-Item -r ".\dist\turing-system-monitor\res\themes\--Theme examples\"
-        7z a -tzip turing-system-monitor-${{github.event.release.tag_name}}-portable.zip ".\dist\turing-system-monitor"
+        7z a -tzip turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip ".\dist\turing-system-monitor"
 
     - name: '📦 Archive Windows installer'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
-        name: turing-system-monitor-${{github.event.release.tag_name}}
-        path: tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}.exe
+        name: turing-system-monitor-${{github.event.release.tag_name}}-windows
+        path: tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}-windows.exe
         if-no-files-found: error
 
     - name: '📦 Archive Windows portable archive'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
-        name: turing-system-monitor-${{github.event.release.tag_name}}-portable
-        path: turing-system-monitor-${{github.event.release.tag_name}}-portable.zip
+        name: turing-system-monitor-${{github.event.release.tag_name}}-portable-windows
+        path: turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip
         if-no-files-found: error
 
     - name: '📩 Publish Windows installer to Release'
       run: |
-        gh release upload ${{github.event.release.tag_name}} tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}.exe
+        gh release upload ${{github.event.release.tag_name}} tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}-windows.exe
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: '📩 Publish Windows portable zip to Release'
       run: |
-        gh release upload ${{github.event.release.tag_name}} turing-system-monitor-${{github.event.release.tag_name}}-portable.zip
+        gh release upload ${{github.event.release.tag_name}} turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,7 +1,7 @@
 config:
   # Configuration values to set up basic communication
   # Set your COM port e.g. COM3 for Windows, /dev/ttyACM0 for Linux...
-  # Use AUTO for COM port auto-discovery (may not work on every setup)
+  # Use AUTO for COM port auto-discovery (may not work on every setup) or if device is not detected as a COM port
   # COM_PORT: "/dev/ttyACM0"
   # COM_PORT: "COM3"
   COM_PORT: AUTO
@@ -64,6 +64,7 @@ display:
   # - B         for Xuanfang 3.5" (inc. flagship)
   # - C         for Turing 2.1"/2.8"/5"/8.8"
   # - D         for Kipye Qiye Smart Display 3.5"
+  # - TUR_USB   for Turing HW revisions 1.x: 4.6"/5.2"/8.0"/8.8"/9.2"
   # - WEACT_A   for WeAct Studio Display FS V1 3.5"
   # - WEACT_B   for WeAct Studio Display FS V1 0.96"
   # - SIMU for simulated display (image written in screencap.png). Width & height will be detected from the theme

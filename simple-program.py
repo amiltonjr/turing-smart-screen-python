@@ -35,31 +35,24 @@ from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation
 from library.lcd.lcd_comm_rev_b import LcdCommRevB
 from library.lcd.lcd_comm_rev_c import LcdCommRevC
 from library.lcd.lcd_comm_rev_d import LcdCommRevD
+from library.lcd.lcd_comm_turing_usb import LcdCommTuringUSB
 from library.lcd.lcd_comm_weact_a import LcdCommWeActA
 from library.lcd.lcd_comm_weact_b import LcdCommWeActB
 from library.lcd.lcd_simulated import LcdSimulated
 from library.log import logger
 
-# Set your COM port e.g. COM3 for Windows, /dev/ttyACM0 for Linux, etc. or "AUTO" for auto-discovery
+# Set your COM port e.g. COM3 for Windows, /dev/ttyACM0 for Linux, etc.
+# Use AUTO for COM port auto-discovery (may not work on every setup) or if device is not detected as a COM port
 # COM_PORT = "/dev/ttyACM0"
 # COM_PORT = "COM5"
 COM_PORT = "AUTO"
 
-# Display revision:
-# - A      for Turing 3.5" and UsbPCMonitor 3.5"/5"
-# - B      for Xuanfang 3.5" (inc. flagship)
-# - C      for Turing 5"
-# - D      for Kipye Qiye Smart Display 3.5"
-# - SIMU   for simulated display (image written in screencap.png)
+# Display revision: see config.yaml comments for values
 # To identify your smart screen: https://github.com/mathoudebine/turing-smart-screen-python/wiki/Hardware-revisions
 REVISION = "A"
 
 # Display width & height in pixels for portrait orientation
 # /!\ Do not switch width/height here for landscape, use lcd_comm.SetOrientation below
-# 320x480 for 3.5" models
-# 480x480 for 2.1" models
-# 480x800 for 5" models
-# 480x1920 for 8.8" models
 WIDTH, HEIGHT = 320, 480
 
 assert WIDTH <= HEIGHT, "Indicate display width/height for PORTRAIT orientation: width <= height"
@@ -84,7 +77,6 @@ if __name__ == "__main__":
     lcd_comm = None
     if REVISION == "A":
         logger.info("Selected Hardware Revision A (Turing Smart Screen 3.5\" & UsbPCMonitor 3.5\"/5\")")
-        # NOTE: If you have UsbPCMonitor 5" you need to change the width/height to 480x800 below
         lcd_comm = LcdCommRevA(com_port=COM_PORT, display_width=WIDTH, display_height=HEIGHT)
     elif REVISION == "B":
         logger.info("Selected Hardware Revision B (XuanFang screen 3.5\" version B / flagship)")
@@ -95,6 +87,9 @@ if __name__ == "__main__":
     elif REVISION == "D":
         logger.info("Selected Hardware Revision D (Kipye Qiye Smart Display 3.5\")")
         lcd_comm = LcdCommRevD(com_port=COM_PORT, display_width=WIDTH, display_height=HEIGHT)
+    elif REVISION == "TUR_USB":
+        logger.info("Selected Hardware Revision Turing USB (newer models 4.6\"/5.2\"/8\"/8.8\" HW rev 1.x/9.2\"")
+        lcd_comm = LcdCommTuringUSB(com_port=COM_PORT, display_width=WIDTH, display_height=HEIGHT)
     elif REVISION == "WEACT_A":
         logger.info("Selected Hardware WeAct Studio Display FS V1 3.5\"")
         lcd_comm = LcdCommWeActA(com_port=COM_PORT, display_width=WIDTH, display_height=HEIGHT)
