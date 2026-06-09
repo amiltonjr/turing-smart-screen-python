@@ -50,6 +50,7 @@ class LcdComm(ABC):
         self.lcd_serial = None
 
         # String containing absolute path to serial port e.g. "COM3", "/dev/ttyACM1" or "AUTO" for auto-discovery
+        # Ignored for USB HID screens
         self.com_port = com_port
 
         # Display always start in portrait orientation by default
@@ -180,8 +181,8 @@ class LcdComm(ABC):
             return self.serial_read(readSize)
 
     @staticmethod
-    @abstractmethod
     def auto_detect_com_port() -> Optional[str]:
+        # To implement only for screens that use serial commands
         pass
 
     @abstractmethod
@@ -256,9 +257,9 @@ class LcdComm(ABC):
         font_color = parse_color(font_color)
         background_color = parse_color(background_color)
 
-        assert x <= self.get_width(), 'Text X coordinate ' + str(x) + ' must be <= display width ' + str(
+        assert x <= self.get_width(), 'Text "' + text + '" X coordinate ' + str(x) + ' must be <= display width ' + str(
             self.get_width())
-        assert y <= self.get_height(), 'Text Y coordinate ' + str(y) + ' must be <= display height ' + str(
+        assert y <= self.get_height(), 'Text "' + text + '" Y coordinate ' + str(y) + ' must be <= display height ' + str(
             self.get_height())
         assert len(text) > 0, 'Text must not be empty'
         assert font_size > 0, "Font size must be > 0"
@@ -325,7 +326,8 @@ class LcdComm(ABC):
                            bar_color: Color = (0, 0, 0),
                            bar_outline: bool = True,
                            background_color: Color = (255, 255, 255),
-                           background_image: Optional[str] = None):
+                           background_image: Optional[str] = None,
+                           reverse_direction: Optional[bool] = False):
         # Generate a progress bar and display it
         # Provide the background image path to display progress bar with transparent background
 
@@ -355,12 +357,38 @@ class LcdComm(ABC):
             # Crop bitmap to keep only the progress bar background
             bar_image = bar_image.crop(box=(x, y, x + width, y + height))
 
-        # Draw progress bar
-        bar_filled_width = (value / (max_value - min_value) * width) - 1
-        if bar_filled_width < 0:
-            bar_filled_width = 0
+        # Draw progress bar. Fill has to be computed from the offset
+        # into [min_value, max_value], not the raw value; otherwise a
+        # bar with min_value > 0 (e.g. a 25..95 temperature bar) is
+        # filled by the wrong fraction. DisplayRadialProgressBar below
+        # already does this correctly. See issue #954.
+        if width > height:
+            bar_filled_width = ((value - min_value) / (max_value - min_value) * width) - 1
+            if bar_filled_width < 0:
+                bar_filled_width = 0
+        else:
+            bar_filled_height = ((value - min_value) / (max_value - min_value) * height) - 1
+            if bar_filled_height < 0:
+                bar_filled_height = 0
         draw = ImageDraw.Draw(bar_image)
-        draw.rectangle([0, 0, bar_filled_width, height - 1], fill=bar_color, outline=bar_color)
+
+        # most common setting
+        x1 = 0
+        y1 = 0
+        x2 = width - 1
+        y2 = height - 1
+
+        if width > height:
+            if reverse_direction is True:
+                x1 = width - 1 - bar_filled_width
+            else:
+                x2 = bar_filled_width
+        else:
+            if reverse_direction is True:
+                y2 = bar_filled_height
+            else:
+                y1 = height - 1 - bar_filled_height
+        draw.rectangle([x1, y1, x2, y2], fill=bar_color, outline=bar_color)
 
         if bar_outline:
             # Draw outline

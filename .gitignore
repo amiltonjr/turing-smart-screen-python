@@ -140,4 +140,5 @@ dmypy.json
 screencap.png
 tmp
 
+version.txt
 external/LibreHardwareMonitor/LibreHardwareMonitorLib.sys
