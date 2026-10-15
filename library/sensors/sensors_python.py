@@ -123,6 +123,15 @@ class Cpu(sensors.Cpu):
     @staticmethod
     def percentage(interval: float) -> float:
         try:
+            import library.config as config
+            cpu_type = config.CONFIG_DATA.get("config", {}).get("CPU_PERCENTAGE_TYPE", "MAX").upper()
+        except Exception:
+            cpu_type = "MAX"
+
+        try:
+            if cpu_type == "MAX":
+                percpu = psutil.cpu_percent(interval=interval, percpu=True)
+                return max(percpu) if percpu else psutil.cpu_percent(interval=interval)
             return psutil.cpu_percent(interval=interval)
         except:
             return math.nan
@@ -479,29 +488,46 @@ class Net(sensors.Net):
     def stats(if_name, interval) -> Tuple[
         int, int, int, int]:  # up rate (B/s), uploaded (B), dl rate (B/s), downloaded (B)
         try:
-            # Get current counters
-            pnic_after = psutil.net_io_counters(pernic=True)
-
             upload_rate = 0
             uploaded = 0
             download_rate = 0
             downloaded = 0
 
-            if if_name != "":
-                if if_name in pnic_after:
+            if not if_name:
+                return 0, 0, 0, 0
+
+            if str(if_name).upper() in ("ALL", "TOTAL"):
+                counters = psutil.net_io_counters(pernic=False)
+                key = "__ALL__"
+                if key in PNIC_BEFORE:
                     try:
-                        upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
-                        uploaded = pnic_after[if_name].bytes_sent
-                        download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
-                        downloaded = pnic_after[if_name].bytes_recv
+                        upload_rate = (counters.bytes_sent - PNIC_BEFORE[key].bytes_sent) / interval
+                        uploaded = counters.bytes_sent
+                        download_rate = (counters.bytes_recv - PNIC_BEFORE[key].bytes_recv) / interval
+                        downloaded = counters.bytes_recv
                     except:
-                        # Interface might not be in PNIC_BEFORE for now
                         pass
-
-                    PNIC_BEFORE.update({if_name: pnic_after[if_name]})
                 else:
-                    logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
+                    uploaded = counters.bytes_sent
+                    downloaded = counters.bytes_recv
+                PNIC_BEFORE[key] = counters
+                return int(upload_rate), uploaded, int(download_rate), downloaded
 
-            return upload_rate, uploaded, download_rate, downloaded
+            pnic_after = psutil.net_io_counters(pernic=True)
+            if if_name in pnic_after:
+                try:
+                    upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
+                    uploaded = pnic_after[if_name].bytes_sent
+                    download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
+                    downloaded = pnic_after[if_name].bytes_recv
+                except:
+                    # Interface might not be in PNIC_BEFORE for now
+                    pass
+
+                PNIC_BEFORE.update({if_name: pnic_after[if_name]})
+            else:
+                logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
+
+            return int(upload_rate), uploaded, int(download_rate), downloaded
         except:
             return -1, -1, -1, -1

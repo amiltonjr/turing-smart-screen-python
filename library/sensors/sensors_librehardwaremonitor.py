@@ -178,9 +178,24 @@ class Cpu(sensors.Cpu):
     @staticmethod
     def percentage(interval: float) -> float:
         cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
+        try:
+            import library.config as config
+            cpu_type = config.CONFIG_DATA.get("config", {}).get("CPU_PERCENTAGE_TYPE", "MAX").upper()
+        except Exception:
+            cpu_type = "MAX"
+
+        if cpu_type == "MAX":
+            for sensor in cpu.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name) == "CPU Core Max" and sensor.Value is not None:
+                    return float(sensor.Value)
+
         for sensor in cpu.Sensors:
             if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
                     "CPU Total") and sensor.Value is not None:
+                return float(sensor.Value)
+
+        for sensor in cpu.Sensors:
+            if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
                 return float(sensor.Value)
 
         logger.error("CPU load cannot be read")
@@ -219,25 +234,23 @@ class Cpu(sensors.Cpu):
     def temperature() -> float:
         cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
         try:
-            # By default, the average temperature of all CPU cores will be used
+            # First check for Core Max, CPU Package, or highest temperature among all cores
+            temps = []
+            for sensor in cpu.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
+                    name = str(sensor.Name)
+                    if name.startswith("Core Max") or name.startswith("CPU Package") or "Core #" in name:
+                        temps.append(float(sensor.Value))
+            if temps:
+                return max(temps)
+
+            # Fallback to Core Average or any temperature sensor
             for sensor in cpu.Sensors:
                 if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
                         "Core Average") and sensor.Value is not None:
                     return float(sensor.Value)
-            # If not available, the max core temperature will be used
             for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
-                        "Core Max") and sensor.Value is not None:
-                    return float(sensor.Value)
-            # If not available, the CPU Package temperature (usually same as max core temperature) will be used
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
-                        "CPU Package") and sensor.Value is not None:
-                    return float(sensor.Value)
-            # Otherwise any sensor named "Core..." will be used
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
-                        "Core") and sensor.Value is not None:
+                if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
                     return float(sensor.Value)
         except:
             pass
@@ -292,32 +305,35 @@ class Gpu(sensors.Gpu):
         total_mem = math.nan
         temp = math.nan
 
+        loads = []
+        temps = []
+
         for sensor in gpu_to_use.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
-                    "GPU Core") and sensor.Value is not None:
-                load = float(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith("D3D 3D") and math.isnan(
-                    load) and sensor.Value is not None:
-                # Only use D3D usage if global "GPU Core" sensor is not available, because it is less
-                # precise and does not cover the entire GPU: https://www.hwinfo.com/forum/threads/what-is-d3d-usage.759/
-                load = float(sensor.Value)
+            if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
+                name = str(sensor.Name)
+                if name.startswith("GPU Core") or name.startswith("D3D"):
+                    loads.append(float(sensor.Value))
             elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
                     "GPU Memory Used") and sensor.Value is not None:
                 used_mem = float(sensor.Value)
             elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
                     "D3D") and str(sensor.Name).endswith("Memory Used") and math.isnan(
                 used_mem) and sensor.Value is not None:
-                # Only use D3D memory usage if global "GPU Memory Used" sensor is not available, because it is less
-                # precise and does not cover the entire GPU: https://www.hwinfo.com/forum/threads/what-is-d3d-usage.759/
+                # Only use D3D memory usage if global "GPU Memory Used" sensor is not available
                 used_mem = float(sensor.Value)
             elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
                     "GPU Memory Total") and sensor.Value is not None:
                 total_mem = float(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
-                    "GPU Core") and sensor.Value is not None:
-                temp = float(sensor.Value)
+            elif sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
+                temps.append(float(sensor.Value))
 
-        return load, (used_mem / total_mem * 100.0), used_mem, total_mem, temp
+        if loads:
+            load = max(loads)
+        if temps:
+            temp = max(temps)
+
+        mem_percent = (used_mem / total_mem * 100.0) if (total_mem and not math.isnan(used_mem) and not math.isnan(total_mem)) else math.nan
+        return load, mem_percent, used_mem, total_mem, temp
 
     @classmethod
     def fps(cls) -> int:
@@ -385,6 +401,11 @@ class Gpu(sensors.Gpu):
 class Memory(sensors.Memory):
     @staticmethod
     def swap_percent() -> float:
+        try:
+            return float(psutil.swap_memory().percent)
+        except Exception:
+            pass
+
         ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
         vram = get_hw_and_update(Hardware.HardwareType.Memory, "Virtual Memory")
 
@@ -424,6 +445,11 @@ class Memory(sensors.Memory):
 
     @staticmethod
     def virtual_percent() -> float:
+        try:
+            return float(psutil.virtual_memory().percent)
+        except Exception:
+            pass
+
         ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
         for sensor in ram.Sensors:
             if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
@@ -434,21 +460,32 @@ class Memory(sensors.Memory):
 
     @staticmethod
     def virtual_used() -> int:  # In bytes
+        try:
+            vm = psutil.virtual_memory()
+            return int(vm.total - vm.available)
+        except Exception:
+            pass
+
         ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
         for sensor in ram.Sensors:
             if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
                     "Memory Used") and sensor.Value is not None:
-                return int(sensor.Value * 1000000000.0)
+                return int(sensor.Value * (1024.0 ** 3))
 
         return 0
 
     @staticmethod
     def virtual_free() -> int:  # In bytes
+        try:
+            return int(psutil.virtual_memory().available)
+        except Exception:
+            pass
+
         ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
         for sensor in ram.Sensors:
             if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
                     "Memory Available") and sensor.Value is not None:
-                return int(sensor.Value * 1000000000.0)
+                return int(sensor.Value * (1024.0 ** 3))
 
         return 0
 
@@ -482,29 +519,34 @@ class Net(sensors.Net):
         download_rate = 0
         downloaded = 0
 
-        if if_name != "":
-            net_if = get_net_interface_and_update(if_name)
-            # LHM does not expose Data/Throughput sensors for every adapter it reports (e.g. some
-            # Wi-Fi adapters): all values would silently stay at 0 and the network widgets would
-            # display nothing. Read those interfaces from psutil, like disk stats above.
-            if net_if is None or not any(
-                    sensor.SensorType in (Hardware.SensorType.Data, Hardware.SensorType.Throughput)
-                    for sensor in net_if.Sensors):
-                return Net._stats_from_psutil(if_name)
+        if not if_name:
+            return 0, 0, 0, 0
 
-            for sensor in net_if.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                        "Data Uploaded") and sensor.Value is not None:
-                    uploaded = int(sensor.Value * 1000000000.0)
-                elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                        "Data Downloaded") and sensor.Value is not None:
-                    downloaded = int(sensor.Value * 1000000000.0)
-                elif sensor.SensorType == Hardware.SensorType.Throughput and str(sensor.Name).startswith(
-                        "Upload Speed") and sensor.Value is not None:
-                    upload_rate = int(sensor.Value)
-                elif sensor.SensorType == Hardware.SensorType.Throughput and str(sensor.Name).startswith(
-                        "Download Speed") and sensor.Value is not None:
-                    download_rate = int(sensor.Value)
+        if str(if_name).upper() in ("ALL", "TOTAL"):
+            return Net._stats_from_psutil(if_name)
+
+        net_if = get_net_interface_and_update(if_name)
+        # LHM does not expose Data/Throughput sensors for every adapter it reports (e.g. some
+        # Wi-Fi adapters): all values would silently stay at 0 and the network widgets would
+        # display nothing. Read those interfaces from psutil, like disk stats above.
+        if net_if is None or not any(
+                sensor.SensorType in (Hardware.SensorType.Data, Hardware.SensorType.Throughput)
+                for sensor in net_if.Sensors):
+            return Net._stats_from_psutil(if_name)
+
+        for sensor in net_if.Sensors:
+            if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                    "Data Uploaded") and sensor.Value is not None:
+                uploaded = int(sensor.Value * (1024.0 ** 3))
+            elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                    "Data Downloaded") and sensor.Value is not None:
+                downloaded = int(sensor.Value * (1024.0 ** 3))
+            elif sensor.SensorType == Hardware.SensorType.Throughput and str(sensor.Name).startswith(
+                    "Upload Speed") and sensor.Value is not None:
+                upload_rate = int(sensor.Value)
+            elif sensor.SensorType == Hardware.SensorType.Throughput and str(sensor.Name).startswith(
+                    "Download Speed") and sensor.Value is not None:
+                download_rate = int(sensor.Value)
 
         return upload_rate, uploaded, download_rate, downloaded
 
@@ -517,10 +559,19 @@ class Net(sensors.Net):
         download_rate = 0
         downloaded = 0
 
-        counters = psutil.net_io_counters(pernic=True).get(if_name)
+        if not if_name:
+            return 0, 0, 0, 0
+
+        if str(if_name).upper() in ("ALL", "TOTAL"):
+            counters = psutil.net_io_counters(pernic=False)
+            key = "__ALL__"
+        else:
+            counters = psutil.net_io_counters(pernic=True).get(if_name)
+            key = if_name
+
         if counters is not None:
             now = time.monotonic()
-            before = Net._psutil_before.get(if_name)
+            before = Net._psutil_before.get(key)
             # Rates are computed from the elapsed time, so they stay correct even if this
             # interface was not read on the previous cycle.
             if before is not None and now > before[0]:
@@ -529,6 +580,6 @@ class Net(sensors.Net):
                 download_rate = int(max(0, counters.bytes_recv - before[1].bytes_recv) / elapsed)
             uploaded = counters.bytes_sent
             downloaded = counters.bytes_recv
-            Net._psutil_before[if_name] = (now, counters)
+            Net._psutil_before[key] = (now, counters)
 
         return upload_rate, uploaded, download_rate, downloaded

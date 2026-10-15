@@ -28,12 +28,18 @@ config:
   # - AUTO           use the best method based on your OS: Windows OS will use LHM, other OS will use Python libraries
   HW_SENSORS: AUTO
 
+  # CPU percentage reading mode
+  # - MAX: use highest core percentage (CPU Core Max) - recommended to reflect true peak usage
+  # - TOTAL: use average load across all cores (CPU Total)
+  CPU_PERCENTAGE_TYPE: MAX
+
   # Network interfaces
   # Linux/MacOS interfaces are named "eth0", "wlan0", "wlp1s0", "enp2s0"...
   # For Windows use the interfaces pretty name: "Ethernet 2", "Wi-Fi", ...
+  # Set to "ALL" to show the sum of all available network interfaces dynamically.
   # Leave the fields empty if the card does not exist on your setup
-  ETH: Ethernet Down              # Ethernet Card
-  WLO: Wi-Fi # Wi-Fi Card
+  ETH: ALL                        # Ethernet Card or ALL for all interfaces
+  WLO: ""                         # Wi-Fi Card (or leave empty if unused)
 
   # CPU fan
   # For Linux/MacOS platforms, the CPU fan is amongst all fan sensors gathered from the motherboard chipset
