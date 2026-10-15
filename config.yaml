@@ -28,12 +28,18 @@ config:
   # - AUTO           use the best method based on your OS: Windows OS will use LHM, other OS will use Python libraries
   HW_SENSORS: AUTO
 
+  # CPU Percentage calculation mode:
+  # - MAX: reflects the highest core percentage (recommended for multi-core / hybrid CPUs)
+  # - AVERAGE: arithmetic average of all cores
+  CPU_PERCENTAGE_MODE: MAX
+
   # Network interfaces
   # Linux/MacOS interfaces are named "eth0", "wlan0", "wlp1s0", "enp2s0"...
   # For Windows use the interfaces pretty name: "Ethernet 2", "Wi-Fi", ...
   # Leave the fields empty if the card does not exist on your setup
-  ETH: en0  # Ethernet Card
-  WLO: en3  # Wi-Fi Card
+  # Set ETH to ALL to sum download/upload across all available active interfaces
+  ETH: ALL  # Ethernet / Global Network aggregate
+  WLO: ""   # Wi-Fi Card (leave empty when using ALL on ETH)
 
   # CPU fan
   # For Linux/MacOS platforms, the CPU fan is amongst all fan sensors gathered from the motherboard chipset

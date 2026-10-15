@@ -50,6 +50,158 @@ except:
 
 PNIC_BEFORE = {}
 
+# AppleSMC and Mach VM integration for macOS
+_smc_conn = None
+
+
+def _init_smc():
+    global _smc_conn
+    if _smc_conn is not None:
+        return _smc_conn
+    if platform.system() != "Darwin":
+        return None
+    try:
+        import ctypes
+        import ctypes.util
+
+        iokit = ctypes.cdll.LoadLibrary(ctypes.util.find_library('IOKit'))
+        mach = ctypes.cdll.LoadLibrary(ctypes.util.find_library('System'))
+
+        class SMCVersion(ctypes.Structure):
+            _fields_ = [
+                ('major', ctypes.c_uint8),
+                ('minor', ctypes.c_uint8),
+                ('build', ctypes.c_uint8),
+                ('reserved', ctypes.c_uint8),
+                ('release', ctypes.c_uint16),
+            ]
+
+        class SMCPLimitData(ctypes.Structure):
+            _fields_ = [
+                ('version', ctypes.c_uint16),
+                ('length', ctypes.c_uint16),
+                ('cpuPLimit', ctypes.c_uint32),
+                ('gpuPLimit', ctypes.c_uint32),
+                ('memPLimit', ctypes.c_uint32),
+            ]
+
+        class SMCKeyInfoData(ctypes.Structure):
+            _fields_ = [
+                ('dataSize', ctypes.c_uint32),
+                ('dataType', ctypes.c_uint32),
+                ('dataAttributes', ctypes.c_uint8),
+            ]
+
+        class SMCKeyData(ctypes.Structure):
+            _fields_ = [
+                ('key', ctypes.c_uint32),
+                ('vers', SMCVersion),
+                ('pLimitData', SMCPLimitData),
+                ('keyInfo', SMCKeyInfoData),
+                ('result', ctypes.c_uint8),
+                ('status', ctypes.c_uint8),
+                ('data8', ctypes.c_uint8),
+                ('data32', ctypes.c_uint32),
+                ('bytes', ctypes.c_uint8 * 32),
+            ]
+
+        iokit.IOServiceMatching.restype = ctypes.c_void_p
+        iokit.IOServiceMatching.argtypes = [ctypes.c_char_p]
+        iokit.IOServiceGetMatchingService.restype = ctypes.c_uint32
+        iokit.IOServiceGetMatchingService.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        iokit.IOServiceOpen.restype = ctypes.c_int32
+        iokit.IOServiceOpen.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(ctypes.c_uint32)]
+        iokit.IOConnectCallStructMethod.restype = ctypes.c_int32
+        iokit.IOConnectCallStructMethod.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_size_t,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+
+        service = iokit.IOServiceGetMatchingService(0, iokit.IOServiceMatching(b'AppleSMC'))
+        if service:
+            conn = ctypes.c_uint32()
+            res = iokit.IOServiceOpen(service, mach.mach_task_self(), 0, ctypes.byref(conn))
+            if res == 0:
+                _smc_conn = (iokit, conn, SMCKeyData)
+                return _smc_conn
+    except Exception:
+        pass
+    return None
+
+
+def _read_smc_temp(key_str: str) -> float:
+    smc = _init_smc()
+    if not smc:
+        return None
+    iokit, conn, SMCKeyData = smc
+    try:
+        import ctypes
+        k_val = 0
+        for c in key_str.encode('ascii'):
+            k_val = (k_val << 8) | c
+
+        inp = SMCKeyData()
+        inp.key = k_val
+        inp.data8 = 9  # SMC_CMD_READ_KEYINFO
+        out = SMCKeyData()
+        sz = ctypes.c_size_t(ctypes.sizeof(SMCKeyData))
+        res = iokit.IOConnectCallStructMethod(conn, 2, ctypes.byref(inp), sz, ctypes.byref(out), ctypes.byref(sz))
+        if res != 0 or out.result != 0:
+            return None
+
+        dsize = out.keyInfo.dataSize
+        dtype = out.keyInfo.dataType.to_bytes(4, 'big').decode('ascii', errors='replace')
+        inp.data8 = 5  # SMC_CMD_READ_BYTES
+        inp.keyInfo.dataSize = dsize
+        res = iokit.IOConnectCallStructMethod(conn, 2, ctypes.byref(inp), sz, ctypes.byref(out), ctypes.byref(sz))
+        if res == 0 and out.result == 0:
+            raw = bytes(out.bytes[:dsize])
+            if dtype == 'sp78' and len(raw) >= 2:
+                return int.from_bytes(raw[:2], 'big', signed=True) / 256.0
+            elif dtype == 'fpe2' and len(raw) >= 2:
+                return int.from_bytes(raw[:2], 'big', signed=False) / 4.0
+    except Exception:
+        pass
+    return None
+
+
+def _get_mac_cpu_temperature() -> float:
+    temps = []
+    # Package, die, heatsink sensors
+    for k in ['TC0P', 'TC0D', 'TC0H', 'TC0p', 'TC0d']:
+        v = _read_smc_temp(k)
+        if v is not None and 10 < v < 125:
+            temps.append(v)
+    # Core sensors
+    for i in range(32):
+        for pat in (f'TC{i}c', f'TC{i}C', f'TC{i:02d}c'):
+            v = _read_smc_temp(pat)
+            if v is not None and 10 < v < 125:
+                temps.append(v)
+                break
+    if temps:
+        return max(temps)
+    return math.nan
+
+
+def is_loopback(nic_name: str) -> bool:
+    name_lower = str(nic_name).lower()
+    if name_lower.startswith('lo') or 'loopback' in name_lower:
+        return True
+    try:
+        stats = psutil.net_if_stats()
+        if nic_name in stats:
+            flags = getattr(stats[nic_name], 'flags', '')
+            if 'loopback' in str(flags).lower():
+                return True
+    except:
+        pass
+    return False
+
 
 class GpuType(IntEnum):
     UNSUPPORTED = auto()
@@ -123,6 +275,19 @@ class Cpu(sensors.Cpu):
     @staticmethod
     def percentage(interval: float) -> float:
         try:
+            mode = "MAX"
+            try:
+                import library.config as config
+                mode = config.CONFIG_DATA.get("config", {}).get("CPU_PERCENTAGE_MODE", "MAX").upper()
+            except:
+                pass
+
+            if mode == "AVERAGE":
+                return psutil.cpu_percent(interval=interval)
+
+            per_cpu = psutil.cpu_percent(interval=interval, percpu=True)
+            if per_cpu:
+                return max(per_cpu)
             return psutil.cpu_percent(interval=interval)
         except:
             return math.nan
@@ -144,22 +309,29 @@ class Cpu(sensors.Cpu):
     @staticmethod
     def temperature() -> float:
         cpu_temp = math.nan
+        if platform.system() == "Darwin":
+            try:
+                cpu_temp = _get_mac_cpu_temperature()
+                if not math.isnan(cpu_temp) and cpu_temp > 0:
+                    return cpu_temp
+            except:
+                pass
+
         try:
             sensors_temps = psutil.sensors_temperatures()
             if 'coretemp' in sensors_temps:
-                # Intel CPU
-                cpu_temp = sensors_temps['coretemp'][0].current
+                # Intel CPU - take highest core/package temp
+                cpu_temp = max(s.current for s in sensors_temps['coretemp'] if s.current is not None)
             elif 'k10temp' in sensors_temps:
                 # AMD CPU
-                cpu_temp = sensors_temps['k10temp'][0].current
+                cpu_temp = max(s.current for s in sensors_temps['k10temp'] if s.current is not None)
             elif 'cpu_thermal' in sensors_temps:
                 # ARM CPU
-                cpu_temp = sensors_temps['cpu_thermal'][0].current
+                cpu_temp = max(s.current for s in sensors_temps['cpu_thermal'] if s.current is not None)
             elif 'zenpower' in sensors_temps:
                 # AMD CPU with zenpower (k10temp is in blacklist)
-                cpu_temp = sensors_temps['zenpower'][0].current
+                cpu_temp = max(s.current for s in sensors_temps['zenpower'] if s.current is not None)
         except:
-            # psutil.sensors_temperatures not available on Windows / MacOS
             pass
         return cpu_temp
 
@@ -330,25 +502,62 @@ class GpuAmd(sensors.Gpu):
             # -c IOAccelerator focuses on the GPU, making the search instantaneous
             result = subprocess.run(['ioreg', '-r', '-c', 'IOAccelerator', '-l'], capture_output=True, text=True)
             
+            max_temp = -1.0
+            max_load = -1.0
+            max_mem_used = -1.0
+            matched_mem_free = -1.0
+            max_clock = -1.0
+            max_fan = -1.0
+
             for line in result.stdout.split('\n'):
                 if '"PerformanceStatistics"' in line:
                     temp = re.search(r'"Temperature\(C\)"=(\d+)', line)
-                    load = re.search(r'"GPU Activity\(%\)"=(\d+)', line)
-                    if not load:
-                        load = re.search(r'"Device Utilization %"=(\d+)', line)
+                    load_act = re.search(r'"GPU Activity\(%\)"=(\d+)', line)
+                    load_dev = re.search(r'"Device Utilization %"=(\d+)', line)
                     mem_used = re.search(r'"inUseVidMemoryBytes"=(\d+)', line)
                     mem_free = re.search(r'"vramFreeBytes"=(\d+)', line)
                     clock = re.search(r'"Core Clock\(MHz\)"=(\d+)', line)
                     fan = re.search(r'"Fan Speed\(%\)"=(\d+)', line)
 
-                    if temp: stats['temp'] = float(temp.group(1))
-                    if load: stats['load'] = float(load.group(1))
-                    if mem_used: stats['mem_used'] = float(mem_used.group(1)) / 1024 / 1024 # Convert to MB
-                    if mem_free: stats['mem_free'] = float(mem_free.group(1)) / 1024 / 1024 # Convert to MB
-                    if clock: stats['clock'] = float(clock.group(1))
-                    if fan: stats['fan'] = float(fan.group(1))
-                    break
-            
+                    if temp:
+                        max_temp = max(max_temp, float(temp.group(1)))
+
+                    cur_load = -1.0
+                    if load_act:
+                        cur_load = max(cur_load, float(load_act.group(1)))
+                    if load_dev:
+                        cur_load = max(cur_load, float(load_dev.group(1)))
+                    if cur_load >= 0:
+                        max_load = max(max_load, cur_load)
+
+                    if mem_used:
+                        cur_mem_used = float(mem_used.group(1)) / 1024 / 1024
+                        if cur_mem_used > max_mem_used:
+                            max_mem_used = cur_mem_used
+                            if mem_free:
+                                matched_mem_free = float(mem_free.group(1)) / 1024 / 1024
+
+                    if clock:
+                        max_clock = max(max_clock, float(clock.group(1)))
+                    if fan:
+                        max_fan = max(max_fan, float(fan.group(1)))
+
+            # Also check SMC GPU temperature keys if available
+            try:
+                for k in ['TG0D', 'TG0P', 'TG0d', 'TG0p', 'TGDD']:
+                    smc_t = _read_smc_temp(k)
+                    if smc_t is not None and 0 < smc_t < 125:
+                        max_temp = max(max_temp, smc_t)
+            except Exception:
+                pass
+
+            if max_temp >= 0: stats['temp'] = max_temp
+            if max_load >= 0: stats['load'] = max_load
+            if max_mem_used >= 0: stats['mem_used'] = max_mem_used
+            if matched_mem_free >= 0: stats['mem_free'] = matched_mem_free
+            if max_clock >= 0: stats['clock'] = max_clock
+            if max_fan >= 0: stats['fan'] = max_fan
+
             cls._mac_stats_cache = stats
             cls._mac_stats_time = time.time()
         except Exception:
@@ -490,6 +699,61 @@ class GpuAmd(sensors.Gpu):
 
 class Memory(sensors.Memory):
     @staticmethod
+    def _get_darwin_memory():
+        try:
+            import ctypes
+            import ctypes.util
+
+            libc = ctypes.cdll.LoadLibrary(ctypes.util.find_library('c'))
+            HOST_VM_INFO64 = 4
+            HOST_VM_INFO64_COUNT = 38
+
+            class vm_statistics64(ctypes.Structure):
+                _fields_ = [
+                    ('free_count', ctypes.c_uint32),
+                    ('active_count', ctypes.c_uint32),
+                    ('inactive_count', ctypes.c_uint32),
+                    ('wire_count', ctypes.c_uint32),
+                    ('zero_fill_count', ctypes.c_uint64),
+                    ('reactivations', ctypes.c_uint64),
+                    ('pageins', ctypes.c_uint64),
+                    ('pageouts', ctypes.c_uint64),
+                    ('faults', ctypes.c_uint64),
+                    ('cow_faults', ctypes.c_uint64),
+                    ('lookups', ctypes.c_uint64),
+                    ('hits', ctypes.c_uint64),
+                    ('purges', ctypes.c_uint64),
+                    ('purgeable_count', ctypes.c_uint32),
+                    ('speculative_count', ctypes.c_uint32),
+                    ('decompressions', ctypes.c_uint64),
+                    ('compressions', ctypes.c_uint64),
+                    ('swapins', ctypes.c_uint64),
+                    ('swapouts', ctypes.c_uint64),
+                    ('compressor_page_count', ctypes.c_uint32),
+                    ('throttled_count', ctypes.c_uint32),
+                    ('external_page_count', ctypes.c_uint32),
+                    ('internal_page_count', ctypes.c_uint32),
+                    ('total_uncompressed_pages_in_compressor', ctypes.c_uint64),
+                ]
+
+            vm_stat = vm_statistics64()
+            count = ctypes.c_uint32(HOST_VM_INFO64_COUNT)
+            host = libc.mach_host_self()
+            if libc.host_statistics64(host, HOST_VM_INFO64, ctypes.byref(vm_stat), ctypes.byref(count)) == 0:
+                page_size = 4096
+                app_memory = (vm_stat.internal_page_count - vm_stat.purgeable_count) * page_size
+                wired = vm_stat.wire_count * page_size
+                compressed = vm_stat.compressor_page_count * page_size
+                used = app_memory + wired + compressed
+                total = psutil.virtual_memory().total
+                free = max(0, total - used)
+                percent = (used / total) * 100.0 if total > 0 else 0.0
+                return used, free, percent
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
     def swap_percent() -> float:
         try:
             return psutil.swap_memory().percent
@@ -499,6 +763,10 @@ class Memory(sensors.Memory):
     @staticmethod
     def virtual_percent() -> float:
         try:
+            if platform.system() == "Darwin":
+                darwin_mem = Memory._get_darwin_memory()
+                if darwin_mem:
+                    return darwin_mem[2]
             return psutil.virtual_memory().percent
         except:
             return math.nan
@@ -506,8 +774,10 @@ class Memory(sensors.Memory):
     @staticmethod
     def virtual_used() -> int:  # In bytes
         try:
-            # Do not use psutil.virtual_memory().used: from https://psutil.readthedocs.io/en/latest/#memory
-            # "It is calculated differently depending on the platform and designed for informational purposes only"
+            if platform.system() == "Darwin":
+                darwin_mem = Memory._get_darwin_memory()
+                if darwin_mem:
+                    return int(darwin_mem[0])
             return psutil.virtual_memory().total - psutil.virtual_memory().available
         except:
             return -1
@@ -515,8 +785,10 @@ class Memory(sensors.Memory):
     @staticmethod
     def virtual_free() -> int:  # In bytes
         try:
-            # Do not use psutil.virtual_memory().free: from https://psutil.readthedocs.io/en/latest/#memory
-            # "note that this doesn’t reflect the actual memory available (use available instead)."
+            if platform.system() == "Darwin":
+                darwin_mem = Memory._get_darwin_memory()
+                if darwin_mem:
+                    return int(darwin_mem[1])
             return psutil.virtual_memory().available
         except:
             return -1
@@ -550,28 +822,44 @@ class Net(sensors.Net):
     def stats(if_name, interval) -> Tuple[
         int, int, int, int]:  # up rate (B/s), uploaded (B), dl rate (B/s), downloaded (B)
         try:
-            # Get current counters
             pnic_after = psutil.net_io_counters(pernic=True)
 
-            upload_rate = 0
+            upload_rate = 0.0
             uploaded = 0
-            download_rate = 0
+            download_rate = 0.0
             downloaded = 0
 
-            if if_name != "":
-                if if_name in pnic_after:
-                    try:
-                        upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
-                        uploaded = pnic_after[if_name].bytes_sent
-                        download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
-                        downloaded = pnic_after[if_name].bytes_recv
-                    except:
-                        # Interface might not be in PNIC_BEFORE for now
-                        pass
+            target = str(if_name).strip().upper() if if_name else ""
+            if target in ["ALL", "AUTO", "TOTAL", "SUM"]:
+                for nic, cur in pnic_after.items():
+                    if is_loopback(nic):
+                        continue
+                    uploaded += cur.bytes_sent
+                    downloaded += cur.bytes_recv
+                    if nic in PNIC_BEFORE:
+                        prev = PNIC_BEFORE[nic]
+                        if cur.bytes_sent >= prev.bytes_sent:
+                            upload_rate += (cur.bytes_sent - prev.bytes_sent) / interval
+                        if cur.bytes_recv >= prev.bytes_recv:
+                            download_rate += (cur.bytes_recv - prev.bytes_recv) / interval
+                    PNIC_BEFORE[nic] = cur
+                return upload_rate, uploaded, download_rate, downloaded
 
-                    PNIC_BEFORE.update({if_name: pnic_after[if_name]})
-                else:
-                    logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
+            if not if_name:
+                return 0, 0, 0, 0
+
+            if if_name in pnic_after:
+                try:
+                    upload_rate = (pnic_after[if_name].bytes_sent - PNIC_BEFORE[if_name].bytes_sent) / interval
+                    uploaded = pnic_after[if_name].bytes_sent
+                    download_rate = (pnic_after[if_name].bytes_recv - PNIC_BEFORE[if_name].bytes_recv) / interval
+                    downloaded = pnic_after[if_name].bytes_recv
+                except:
+                    pass
+
+                PNIC_BEFORE.update({if_name: pnic_after[if_name]})
+            else:
+                logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
 
             return upload_rate, uploaded, download_rate, downloaded
         except:
