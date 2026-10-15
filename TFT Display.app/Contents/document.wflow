@@ -59,8 +59,15 @@
 				<key>ActionParameters</key>
 				<dict>
 					<key>COMMAND_STRING</key>
-					<string>cd /Users/amiltonjunior/turing-smart-screen-python
-/usr/local/opt/python@3.12/bin/python3.12 -m venv venv
+					<string>export PATH="/opt/local/bin:/usr/local/bin:$PATH"
+cd /Users/amiltonjunior/turing-smart-screen-python
+if [ ! -x "venv/bin/python" ]; then
+    if [ -x "/opt/local/bin/python3.12" ]; then
+        /opt/local/bin/python3.12 -m venv venv
+    elif command -v python3.12 &gt;/dev/null 2&gt;&amp;1; then
+        python3.12 -m venv venv
+    fi
+fi
 source venv/bin/activate
 python main.py &amp;
 </string>
