@@ -220,11 +220,12 @@ STATS:
     HOUR:
       TEXT:
         SHOW: True
+        FORMAT: "hh:mm:ss a"
         X: 10
         Y: 455
         FONT: generale-mono/GeneraleMonoA.ttf
         FONT_SIZE: 15
         FONT_COLOR: 255, 239, 8
         BACKGROUND_IMAGE: background.png
-        WIDTH: 100
+        WIDTH: 120
         ANCHOR: lt
