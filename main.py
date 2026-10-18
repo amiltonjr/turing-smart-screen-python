@@ -323,3 +323,5 @@ if __name__ == "__main__":
 
         except Exception as e:
             logger.error("Exception while creating event window: %s" % str(e))
+            while True:
+                time.sleep(1)

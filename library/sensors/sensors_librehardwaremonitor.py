@@ -26,6 +26,7 @@ import ctypes
 import math
 import os
 import sys
+import threading
 import time
 from statistics import mean
 from typing import Tuple
@@ -33,6 +34,8 @@ from typing import Tuple
 import clr  # Clr is from pythonnet package. Do not install clr package
 import psutil
 from win32api import *
+
+lhm_lock = threading.RLock()
 
 import library.sensors.sensors as sensors
 from library.log import logger
@@ -92,138 +95,146 @@ for hardware in handle.Hardware:
 
 
 def get_hw_and_update(hwtype: Hardware.HardwareType, name: str = None) -> Hardware.Hardware:
-    for hardware in handle.Hardware:
-        if hardware.HardwareType == hwtype:
-            if (name and hardware.Name == name) or name is None:
-                hardware.Update()
-                return hardware
-    return None
+    with lhm_lock:
+        for hardware in handle.Hardware:
+            if hardware.HardwareType == hwtype:
+                if (name and hardware.Name == name) or name is None:
+                    hardware.Update()
+                    return hardware
+        return None
 
 
 def get_gpu_name() -> str:
-    # Determine which GPU to use, in case there are multiple : try to avoid using discrete GPU for stats
-    hw_gpus = []
-    for hardware in handle.Hardware:
-        if hardware.HardwareType == Hardware.HardwareType.GpuNvidia \
-                or hardware.HardwareType == Hardware.HardwareType.GpuAmd \
-                or hardware.HardwareType == Hardware.HardwareType.GpuIntel:
-            hw_gpus.append(hardware)
+    with lhm_lock:
+        # Determine which GPU to use, in case there are multiple : try to avoid using discrete GPU for stats
+        hw_gpus = []
+        for hardware in handle.Hardware:
+            if hardware.HardwareType == Hardware.HardwareType.GpuNvidia \
+                    or hardware.HardwareType == Hardware.HardwareType.GpuAmd \
+                    or hardware.HardwareType == Hardware.HardwareType.GpuIntel:
+                hw_gpus.append(hardware)
 
-    if len(hw_gpus) == 0:
-        # No supported GPU found on the system
-        logger.warning("No supported GPU found")
-        return ""
-    elif len(hw_gpus) == 1:
-        # Found one supported GPU
-        logger.debug("Found one supported GPU: %s" % hw_gpus[0].Name)
-        return str(hw_gpus[0].Name)
-    else:
-        # Found multiple GPUs, try to determine which one to use
-        amd_gpus = 0
-        intel_gpus = 0
-        nvidia_gpus = 0
+        if len(hw_gpus) == 0:
+            # No supported GPU found on the system
+            logger.warning("No supported GPU found")
+            return ""
+        elif len(hw_gpus) == 1:
+            # Found one supported GPU
+            logger.debug("Found one supported GPU: %s" % hw_gpus[0].Name)
+            return str(hw_gpus[0].Name)
+        else:
+            # Found multiple GPUs, try to determine which one to use
+            amd_gpus = 0
+            intel_gpus = 0
+            nvidia_gpus = 0
 
-        gpu_to_use = ""
+            gpu_to_use = ""
 
-        # Count GPUs by manufacturer
-        for gpu in hw_gpus:
-            if gpu.HardwareType == Hardware.HardwareType.GpuAmd:
-                amd_gpus += 1
-            elif gpu.HardwareType == Hardware.HardwareType.GpuIntel:
-                intel_gpus += 1
-            elif gpu.HardwareType == Hardware.HardwareType.GpuNvidia:
-                nvidia_gpus += 1
-
-        logger.warning(
-            "Found %d GPUs on your system (%d AMD / %d Nvidia / %d Intel). Auto identify which GPU to use." % (
-                len(hw_gpus), amd_gpus, nvidia_gpus, intel_gpus))
-
-        if nvidia_gpus >= 1:
-            # One (or more) Nvidia GPU: use first available for stats
-            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuNvidia).Name
-        elif amd_gpus == 1:
-            # No Nvidia GPU, only one AMD GPU: use it
-            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuAmd).Name
-        elif amd_gpus > 1:
-            # No Nvidia GPU, several AMD GPUs found: try to use the real GPU but not the APU integrated in CPU
+            # Count GPUs by manufacturer
             for gpu in hw_gpus:
                 if gpu.HardwareType == Hardware.HardwareType.GpuAmd:
-                    for sensor in gpu.Sensors:
-                        if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith("GPU Core"):
-                            # Found load sensor for this GPU: assume it is main GPU and use it for stats
-                            gpu_to_use = gpu.Name
-        else:
-            # No AMD or Nvidia GPU: there are several Intel GPUs, use first available for stats
-            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuIntel).Name
+                    amd_gpus += 1
+                elif gpu.HardwareType == Hardware.HardwareType.GpuIntel:
+                    intel_gpus += 1
+                elif gpu.HardwareType == Hardware.HardwareType.GpuNvidia:
+                    nvidia_gpus += 1
 
-        if gpu_to_use:
-            logger.debug("This GPU will be used for stats: %s" % gpu_to_use)
-        else:
-            logger.warning("No supported GPU found (no GPU with load sensor)")
+            logger.warning(
+                "Found %d GPUs on your system (%d AMD / %d Nvidia / %d Intel). Auto identify which GPU to use." % (
+                    len(hw_gpus), amd_gpus, nvidia_gpus, intel_gpus))
 
-        return gpu_to_use
+            if nvidia_gpus >= 1:
+                # One (or more) Nvidia GPU: use first available for stats
+                gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuNvidia).Name
+            elif amd_gpus == 1:
+                # No Nvidia GPU, only one AMD GPU: use it
+                gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuAmd).Name
+            elif amd_gpus > 1:
+                # No Nvidia GPU, several AMD GPUs found: try to use the real GPU but not the APU integrated in CPU
+                for gpu in hw_gpus:
+                    if gpu.HardwareType == Hardware.HardwareType.GpuAmd:
+                        for sensor in gpu.Sensors:
+                            if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith("GPU Core"):
+                                # Found load sensor for this GPU: assume it is main GPU and use it for stats
+                                gpu_to_use = gpu.Name
+            else:
+                # No AMD or Nvidia GPU: there are several Intel GPUs, use first available for stats
+                gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuIntel).Name
+
+            if gpu_to_use:
+                logger.debug("This GPU will be used for stats: %s" % gpu_to_use)
+            else:
+                logger.warning("No supported GPU found (no GPU with load sensor)")
+
+            return gpu_to_use
 
 
 def get_net_interface_and_update(if_name: str) -> Hardware.Hardware:
-    for hardware in handle.Hardware:
-        if hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:
-            hardware.Update()
-            return hardware
+    with lhm_lock:
+        for hardware in handle.Hardware:
+            if hardware.HardwareType == Hardware.HardwareType.Network and hardware.Name == if_name:
+                hardware.Update()
+                return hardware
 
-    logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
-    return None
+        logger.warning("Network interface '%s' not found. Check names in config.yaml." % if_name)
+        return None
 
 
 class Cpu(sensors.Cpu):
     @staticmethod
     def percentage(interval: float) -> float:
-        cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
-        try:
-            import library.config as config
-            cpu_type = config.CONFIG_DATA.get("config", {}).get("CPU_PERCENTAGE_TYPE", "MAX").upper()
-        except Exception:
-            cpu_type = "MAX"
+        with lhm_lock:
+            cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
+            if cpu is None:
+                return math.nan
+            try:
+                import library.config as config
+                cpu_type = config.CONFIG_DATA.get("config", {}).get("CPU_PERCENTAGE_TYPE", "MAX").upper()
+            except Exception:
+                cpu_type = "MAX"
 
-        if cpu_type == "MAX":
+            if cpu_type == "MAX":
+                for sensor in cpu.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name) == "CPU Core Max" and sensor.Value is not None:
+                        return float(sensor.Value)
+
             for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name) == "CPU Core Max" and sensor.Value is not None:
+                if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
+                        "CPU Total") and sensor.Value is not None:
                     return float(sensor.Value)
 
-        for sensor in cpu.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
-                    "CPU Total") and sensor.Value is not None:
-                return float(sensor.Value)
+            for sensor in cpu.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
+                    return float(sensor.Value)
 
-        for sensor in cpu.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
-                return float(sensor.Value)
-
-        logger.error("CPU load cannot be read")
-        return math.nan
+            logger.error("CPU load cannot be read")
+            return math.nan
 
     @staticmethod
     def frequency() -> float:
-        frequencies = []
-        cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
-        try:
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Clock:
-                    # Keep only real core clocks, ignore effective core clocks
-                    if "Core" in str(sensor.Name) and "Effective" not in str(sensor.Name) and sensor.Value is not None:
-                        frequencies.append(float(sensor.Value))
+        with lhm_lock:
+            frequencies = []
+            cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
+            if cpu is not None:
+                try:
+                    for sensor in cpu.Sensors:
+                        if sensor.SensorType == Hardware.SensorType.Clock:
+                            # Keep only real core clocks, ignore effective core clocks
+                            if "Core" in str(sensor.Name) and "Effective" not in str(sensor.Name) and sensor.Value is not None:
+                                frequencies.append(float(sensor.Value))
 
-            if frequencies:
-                # Take max of all core clock as "CPU clock" (as it is done in Windows Task Manager Performance tab)
-                return max(frequencies)
-        except Exception:
-            pass
+                    if frequencies:
+                        # Take max of all core clock as "CPU clock" (as it is done in Windows Task Manager Performance tab)
+                        return max(frequencies)
+                except Exception:
+                    pass
 
-        try:
-            # Fallback to psutil in case LHM fails
-            return float(psutil.cpu_freq().current)
-        except Exception:
-            # Frequencies reading is not supported on this CPU
-            return math.nan
+            try:
+                # Fallback to psutil in case LHM fails
+                return float(psutil.cpu_freq().current)
+            except Exception:
+                # Frequencies reading is not supported on this CPU
+                return math.nan
 
     @staticmethod
     def load() -> Tuple[float, float, float]:  # 1 / 5 / 15min avg (%):
@@ -232,46 +243,50 @@ class Cpu(sensors.Cpu):
 
     @staticmethod
     def temperature() -> float:
-        cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
-        try:
-            # First check for Core Max, CPU Package, or highest temperature among all cores
-            temps = []
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
-                    name = str(sensor.Name)
-                    if name.startswith("Core Max") or name.startswith("CPU Package") or "Core #" in name:
-                        temps.append(float(sensor.Value))
-            if temps:
-                return max(temps)
+        with lhm_lock:
+            cpu = get_hw_and_update(Hardware.HardwareType.Cpu)
+            if cpu is not None:
+                try:
+                    # First check for Core Max, CPU Package, or highest temperature among all cores
+                    temps = []
+                    for sensor in cpu.Sensors:
+                        if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
+                            name = str(sensor.Name)
+                            if name.startswith("Core Max") or name.startswith("CPU Package") or "Core #" in name:
+                                temps.append(float(sensor.Value))
+                    if temps:
+                        return max(temps)
 
-            # Fallback to Core Average or any temperature sensor
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
-                        "Core Average") and sensor.Value is not None:
-                    return float(sensor.Value)
-            for sensor in cpu.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
-                    return float(sensor.Value)
-        except:
-            pass
+                    # Fallback to Core Average or any temperature sensor
+                    for sensor in cpu.Sensors:
+                        if sensor.SensorType == Hardware.SensorType.Temperature and str(sensor.Name).startswith(
+                                "Core Average") and sensor.Value is not None:
+                            return float(sensor.Value)
+                    for sensor in cpu.Sensors:
+                        if sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
+                            return float(sensor.Value)
+                except:
+                    pass
 
-        return math.nan
+            return math.nan
 
     @staticmethod
     def fan_percent(fan_name: str = None) -> float:
-        mb = get_hw_and_update(Hardware.HardwareType.Motherboard)
-        try:
-            for sh in mb.SubHardware:
-                sh.Update()
-                for sensor in sh.Sensors:
-                    if sensor.SensorType == Hardware.SensorType.Control and "#2" in str(
-                            sensor.Name) and sensor.Value is not None:  # Is Motherboard #2 Fan always the CPU Fan ?
-                        return float(sensor.Value)
-        except:
-            pass
+        with lhm_lock:
+            mb = get_hw_and_update(Hardware.HardwareType.Motherboard)
+            if mb is not None:
+                try:
+                    for sh in mb.SubHardware:
+                        sh.Update()
+                        for sensor in sh.Sensors:
+                            if sensor.SensorType == Hardware.SensorType.Control and "#2" in str(
+                                    sensor.Name) and sensor.Value is not None:  # Is Motherboard #2 Fan always the CPU Fan ?
+                                return float(sensor.Value)
+                except:
+                    pass
 
-        # No Fan Speed sensor for this CPU model
-        return math.nan
+            # No Fan Speed sensor for this CPU model
+            return math.nan
 
 
 class Gpu(sensors.Gpu):
@@ -284,210 +299,227 @@ class Gpu(sensors.Gpu):
     # Get GPU to use for sensors, and update it
     @classmethod
     def get_gpu_to_use(cls):
-        gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuAmd, cls.gpu_name)
-        if gpu_to_use is None:
-            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuNvidia, cls.gpu_name)
-        if gpu_to_use is None:
-            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuIntel, cls.gpu_name)
+        with lhm_lock:
+            if not cls.gpu_name:
+                cls.gpu_name = get_gpu_name()
+            gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuAmd, cls.gpu_name)
+            if gpu_to_use is None:
+                gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuNvidia, cls.gpu_name)
+            if gpu_to_use is None:
+                gpu_to_use = get_hw_and_update(Hardware.HardwareType.GpuIntel, cls.gpu_name)
 
-        return gpu_to_use
+            return gpu_to_use
 
     @classmethod
     def stats(cls) -> Tuple[
         float, float, float, float, float]:  # load (%) / used mem (%) / used mem (Mb) / total mem (Mb) / temp (°C)
-        gpu_to_use = cls.get_gpu_to_use()
-        if gpu_to_use is None:
-            # GPU not supported
-            return math.nan, math.nan, math.nan, math.nan, math.nan
+        with lhm_lock:
+            gpu_to_use = cls.get_gpu_to_use()
+            if gpu_to_use is None:
+                # GPU not supported
+                return math.nan, math.nan, math.nan, math.nan, math.nan
 
-        load = math.nan
-        used_mem = math.nan
-        total_mem = math.nan
-        temp = math.nan
+            load = math.nan
+            used_mem = math.nan
+            total_mem = math.nan
+            temp = math.nan
 
-        loads = []
-        temps = []
+            loads = []
+            temps = []
 
-        for sensor in gpu_to_use.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
-                name = str(sensor.Name)
-                if name.startswith("GPU Core") or name.startswith("D3D"):
-                    loads.append(float(sensor.Value))
-            elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
-                    "GPU Memory Used") and sensor.Value is not None:
-                used_mem = float(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
-                    "D3D") and str(sensor.Name).endswith("Memory Used") and math.isnan(
-                used_mem) and sensor.Value is not None:
-                # Only use D3D memory usage if global "GPU Memory Used" sensor is not available
-                used_mem = float(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
-                    "GPU Memory Total") and sensor.Value is not None:
-                total_mem = float(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
-                temps.append(float(sensor.Value))
+            for sensor in gpu_to_use.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Load and sensor.Value is not None:
+                    name = str(sensor.Name)
+                    if name.startswith("GPU Core") or name.startswith("D3D"):
+                        loads.append(float(sensor.Value))
+                elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
+                        "GPU Memory Used") and sensor.Value is not None:
+                    used_mem = float(sensor.Value)
+                elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
+                        "D3D") and str(sensor.Name).endswith("Memory Used") and math.isnan(
+                    used_mem) and sensor.Value is not None:
+                    # Only use D3D memory usage if global "GPU Memory Used" sensor is not available
+                    used_mem = float(sensor.Value)
+                elif sensor.SensorType == Hardware.SensorType.SmallData and str(sensor.Name).startswith(
+                        "GPU Memory Total") and sensor.Value is not None:
+                    total_mem = float(sensor.Value)
+                elif sensor.SensorType == Hardware.SensorType.Temperature and sensor.Value is not None:
+                    temps.append(float(sensor.Value))
 
-        if loads:
-            load = max(loads)
-        if temps:
-            temp = max(temps)
+            if loads:
+                load = max(loads)
+            if temps:
+                temp = max(temps)
 
-        mem_percent = (used_mem / total_mem * 100.0) if (total_mem and not math.isnan(used_mem) and not math.isnan(total_mem)) else math.nan
-        return load, mem_percent, used_mem, total_mem, temp
+            mem_percent = (used_mem / total_mem * 100.0) if (total_mem and not math.isnan(used_mem) and not math.isnan(total_mem)) else math.nan
+            return load, mem_percent, used_mem, total_mem, temp
 
     @classmethod
     def fps(cls) -> int:
-        gpu_to_use = cls.get_gpu_to_use()
-        if gpu_to_use is None:
-            # GPU not supported
+        with lhm_lock:
+            gpu_to_use = cls.get_gpu_to_use()
+            if gpu_to_use is None:
+                # GPU not supported
+                return -1
+
+            try:
+                for sensor in gpu_to_use.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Factor and "FPS" in str(
+                            sensor.Name) and sensor.Value is not None:
+                        # If a reading returns a value <= 0, returns old value instead
+                        if int(sensor.Value) > 0:
+                            cls.prev_fps = int(sensor.Value)
+                        return cls.prev_fps
+            except:
+                pass
+
+            # No FPS sensor for this GPU model
             return -1
-
-        try:
-            for sensor in gpu_to_use.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Factor and "FPS" in str(
-                        sensor.Name) and sensor.Value is not None:
-                    # If a reading returns a value <= 0, returns old value instead
-                    if int(sensor.Value) > 0:
-                        cls.prev_fps = int(sensor.Value)
-                    return cls.prev_fps
-        except:
-            pass
-
-        # No FPS sensor for this GPU model
-        return -1
 
     @classmethod
     def fan_percent(cls) -> float:
-        gpu_to_use = cls.get_gpu_to_use()
-        if gpu_to_use is None:
-            # GPU not supported
+        with lhm_lock:
+            gpu_to_use = cls.get_gpu_to_use()
+            if gpu_to_use is None:
+                # GPU not supported
+                return math.nan
+
+            try:
+                for sensor in gpu_to_use.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Control and sensor.Value is not None:
+                        return float(sensor.Value)
+            except:
+                pass
+
+            # No Fan Speed sensor for this GPU model
             return math.nan
-
-        try:
-            for sensor in gpu_to_use.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Control and sensor.Value is not None:
-                    return float(sensor.Value)
-        except:
-            pass
-
-        # No Fan Speed sensor for this GPU model
-        return math.nan
 
     @classmethod
     def frequency(cls) -> float:
-        gpu_to_use = cls.get_gpu_to_use()
-        if gpu_to_use is None:
-            # GPU not supported
+        with lhm_lock:
+            gpu_to_use = cls.get_gpu_to_use()
+            if gpu_to_use is None:
+                # GPU not supported
+                return math.nan
+
+            try:
+                for sensor in gpu_to_use.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Clock:
+                        # Keep only real core clocks, ignore effective core clocks
+                        if "Core" in str(sensor.Name) and "Effective" not in str(sensor.Name) and sensor.Value is not None:
+                            return float(sensor.Value)
+            except:
+                pass
+
+            # No Frequency sensor for this GPU model
             return math.nan
-
-        try:
-            for sensor in gpu_to_use.Sensors:
-                if sensor.SensorType == Hardware.SensorType.Clock:
-                    # Keep only real core clocks, ignore effective core clocks
-                    if "Core" in str(sensor.Name) and "Effective" not in str(sensor.Name) and sensor.Value is not None:
-                        return float(sensor.Value)
-        except:
-            pass
-
-        # No Frequency sensor for this GPU model
-        return math.nan
 
     @classmethod
     def is_available(cls) -> bool:
-        cls.gpu_name = get_gpu_name()
-        return bool(cls.gpu_name)
+        with lhm_lock:
+            cls.gpu_name = get_gpu_name()
+            return bool(cls.gpu_name)
 
 
 class Memory(sensors.Memory):
     @staticmethod
     def swap_percent() -> float:
-        try:
-            return float(psutil.swap_memory().percent)
-        except Exception:
-            pass
+        with lhm_lock:
+            try:
+                return float(psutil.swap_memory().percent)
+            except Exception:
+                pass
 
-        ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
-        vram = get_hw_and_update(Hardware.HardwareType.Memory, "Virtual Memory")
+            ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
+            vram = get_hw_and_update(Hardware.HardwareType.Memory, "Virtual Memory")
+            if ram is None or vram is None:
+                return 0.0
 
-        virtual_mem_used = math.nan
-        mem_used = math.nan
-        virtual_mem_available = math.nan
-        mem_available = math.nan
+            virtual_mem_used = math.nan
+            mem_used = math.nan
+            virtual_mem_available = math.nan
+            mem_available = math.nan
 
-        # Get virtual / physical memory stats
-        for sensor in ram.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Used") and sensor.Value is not None:
-                mem_used = int(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Available") and sensor.Value is not None:
-                mem_available = int(sensor.Value)
+            # Get virtual / physical memory stats
+            for sensor in ram.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                        "Memory Used") and sensor.Value is not None:
+                    mem_used = int(sensor.Value)
+                elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                        "Memory Available") and sensor.Value is not None:
+                    mem_available = int(sensor.Value)
 
-        for sensor in vram.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Used") and sensor.Value is not None:
-                virtual_mem_used = int(sensor.Value)
-            elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Available") and sensor.Value is not None:
-                virtual_mem_available = int(sensor.Value)
+            for sensor in vram.Sensors:
+                if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                        "Memory Used") and sensor.Value is not None:
+                    virtual_mem_used = int(sensor.Value)
+                elif sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                        "Memory Available") and sensor.Value is not None:
+                    virtual_mem_available = int(sensor.Value)
 
-        # Compute swap stats from virtual / physical memory stats
-        swap_used = virtual_mem_used - mem_used
-        swap_available = virtual_mem_available - mem_available
-        swap_total = swap_used + swap_available
-        try:
-            percent_swap = swap_used / swap_total * 100.0
-        except:
-            # No swap / pagefile disabled
-            percent_swap = 0.0
+            # Compute swap stats from virtual / physical memory stats
+            swap_used = virtual_mem_used - mem_used
+            swap_available = virtual_mem_available - mem_available
+            swap_total = swap_used + swap_available
+            try:
+                percent_swap = swap_used / swap_total * 100.0
+            except:
+                # No swap / pagefile disabled
+                percent_swap = 0.0
 
-        return percent_swap
+            return percent_swap
 
     @staticmethod
     def virtual_percent() -> float:
-        try:
-            return float(psutil.virtual_memory().percent)
-        except Exception:
-            pass
+        with lhm_lock:
+            try:
+                return float(psutil.virtual_memory().percent)
+            except Exception:
+                pass
 
-        ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
-        for sensor in ram.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
-                    "Memory") and sensor.Value is not None:
-                return float(sensor.Value)
+            ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
+            if ram is not None:
+                for sensor in ram.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Load and str(sensor.Name).startswith(
+                            "Memory") and sensor.Value is not None:
+                        return float(sensor.Value)
 
-        return math.nan
+            return math.nan
 
     @staticmethod
     def virtual_used() -> int:  # In bytes
-        try:
-            vm = psutil.virtual_memory()
-            return int(vm.total - vm.available)
-        except Exception:
-            pass
+        with lhm_lock:
+            try:
+                vm = psutil.virtual_memory()
+                return int(vm.total - vm.available)
+            except Exception:
+                pass
 
-        ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
-        for sensor in ram.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Used") and sensor.Value is not None:
-                return int(sensor.Value * (1024.0 ** 3))
+            ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
+            if ram is not None:
+                for sensor in ram.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                            "Memory Used") and sensor.Value is not None:
+                        return int(sensor.Value * (1024.0 ** 3))
 
-        return 0
+            return 0
 
     @staticmethod
     def virtual_free() -> int:  # In bytes
-        try:
-            return int(psutil.virtual_memory().available)
-        except Exception:
-            pass
+        with lhm_lock:
+            try:
+                return int(psutil.virtual_memory().available)
+            except Exception:
+                pass
 
-        ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
-        for sensor in ram.Sensors:
-            if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
-                    "Memory Available") and sensor.Value is not None:
-                return int(sensor.Value * (1024.0 ** 3))
+            ram = get_hw_and_update(Hardware.HardwareType.Memory, "Total Memory")
+            if ram is not None:
+                for sensor in ram.Sensors:
+                    if sensor.SensorType == Hardware.SensorType.Data and str(sensor.Name).startswith(
+                            "Memory Available") and sensor.Value is not None:
+                        return int(sensor.Value * (1024.0 ** 3))
 
-        return 0
+            return 0
 
 
 # NOTE: all disk data are fetched from psutil Python library, because LHM does not have it.
