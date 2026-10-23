@@ -91,19 +91,38 @@ if __name__ == "__main__":
         logger.debug("(Waited %.1fs)" % wait_time)
 
     def clean_stop(tray_icon=None):
+        if getattr(clean_stop, "_executing", False):
+            return
+        clean_stop._executing = True
+
+        logger.info("Stopping monitoring and turning off display...")
+        # Stop scheduler and pause tasks
+        scheduler.STOPPING = True
+        scheduler.PAUSED = True
+
+        # Empty obsolete draw items from queue so turn_off executes immediately
+        try:
+            import library.config as config
+            while not config.update_queue.empty():
+                try:
+                    config.update_queue.get_nowait()
+                except Exception:
+                    break
+        except Exception:
+            pass
+
         # Turn screen and LEDs off before stopping
         display.turn_off()
 
-        # Do not stop the program now in case data transmission was in progress
-        # Instead, ask the scheduler to empty the action queue before stopping
-        scheduler.STOPPING = True
-
-        # Waiting for all pending request to be sent to display
-        wait_for_empty_queue(5)
+        # Waiting for all pending request to be sent to display (fast)
+        wait_for_empty_queue(2)
 
         # Remove tray icon just before exit
         if tray_icon:
-            tray_icon.visible = False
+            try:
+                tray_icon.visible = False
+            except Exception:
+                pass
 
         # We force the exit to avoid waiting for other scheduled tasks: they may have a long delay!
         try:
@@ -140,6 +159,120 @@ if __name__ == "__main__":
     def on_clean_exit(*args):
         logger.info("Program will now exit")
         clean_stop()
+
+
+    if platform.system() == "Darwin":
+        import AppKit
+        import Foundation
+        import objc
+
+        class DarwinPowerObserver(Foundation.NSObject):
+            is_display_off = False
+
+            def init(self):
+                self = objc.super(DarwinPowerObserver, self).init()
+                if self is None:
+                    return None
+
+                ws_nc = AppKit.NSWorkspace.sharedWorkspace().notificationCenter()
+                ws_nc.addObserver_selector_name_object_(
+                    self,
+                    'onSleep:',
+                    AppKit.NSWorkspaceWillSleepNotification,
+                    None
+                )
+                ws_nc.addObserver_selector_name_object_(
+                    self,
+                    'onWake:',
+                    AppKit.NSWorkspaceDidWakeNotification,
+                    None
+                )
+                ws_nc.addObserver_selector_name_object_(
+                    self,
+                    'onScreensDidSleep:',
+                    AppKit.NSWorkspaceScreensDidSleepNotification,
+                    None
+                )
+                ws_nc.addObserver_selector_name_object_(
+                    self,
+                    'onScreensDidWake:',
+                    AppKit.NSWorkspaceScreensDidWakeNotification,
+                    None
+                )
+                ws_nc.addObserver_selector_name_object_(
+                    self,
+                    'onPowerOff:',
+                    AppKit.NSWorkspaceWillPowerOffNotification,
+                    None
+                )
+
+                def_nc = Foundation.NSNotificationCenter.defaultCenter()
+                def_nc.addObserver_selector_name_object_(
+                    self,
+                    'onAppTerminate:',
+                    AppKit.NSApplicationWillTerminateNotification,
+                    None
+                )
+                return self
+
+            def onSleep_(self, notification):
+                logger.info("macOS is going to sleep, display will turn off")
+                self._handle_sleep()
+
+            def onScreensDidSleep_(self, notification):
+                logger.info("macOS screens went to sleep, display will turn off")
+                self._handle_sleep()
+
+            def onWake_(self, notification):
+                logger.info("macOS is waking up, display will turn on")
+                self._handle_wake()
+
+            def onScreensDidWake_(self, notification):
+                logger.info("macOS screens woke up, display will turn on")
+                self._handle_wake()
+
+            def onPowerOff_(self, notification):
+                logger.info("macOS is shutting down or restarting, turning off display immediately")
+                clean_stop(tray_icon)
+
+            def onAppTerminate_(self, notification):
+                logger.info("macOS application will terminate, turning off display immediately")
+                clean_stop(tray_icon)
+
+            def _handle_sleep(self):
+                if not self.is_display_off:
+                    self.is_display_off = True
+                    scheduler.PAUSED = True
+                    try:
+                        import library.config as config
+                        while not config.update_queue.empty():
+                            try:
+                                config.update_queue.get_nowait()
+                            except Exception:
+                                break
+                    except Exception:
+                        pass
+                    display.turn_off()
+                    wait_for_empty_queue(2)
+
+            def _handle_wake(self):
+                if self.is_display_off:
+                    self.is_display_off = False
+                    time.sleep(0.5)
+                    if hasattr(display.lcd, "lcd_serial") and display.lcd.lcd_serial:
+                        try:
+                            if not display.lcd.lcd_serial.is_open:
+                                display.lcd.openSerial()
+                        except Exception:
+                            try:
+                                display.lcd.closeSerial()
+                                display.lcd.openSerial()
+                            except Exception:
+                                pass
+                    display.turn_on()
+                    display.display_static_images()
+                    display.display_static_text()
+                    scheduler.PAUSED = False
 
 
     if platform.system() == "Windows":
@@ -276,16 +409,23 @@ if __name__ == "__main__":
         clean_stop()
 
     # OS-specific tasks
-    if tray_icon and platform.system() == "Darwin":  # macOS-specific
+    if platform.system() == "Darwin":  # macOS-specific
         from AppKit import NSBundle, NSApp, NSApplicationActivationPolicyProhibited
+
+        # Register Darwin power observer for sleep/wake and power-off events
+        power_observer = DarwinPowerObserver.alloc().init()
+        logger.info("Registered macOS power observer for sleep/wake and shutdown events")
 
         # Hide Python Launcher icon from macOS dock
         info = NSBundle.mainBundle().infoDictionary()
         info["LSUIElement"] = "1"
         NSApp.setActivationPolicy_(NSApplicationActivationPolicyProhibited)
 
-        # For macOS: display the tray icon now with blocking function
-        tray_icon.run()
+        if tray_icon:
+            # For macOS: display the tray icon now with blocking function
+            tray_icon.run()
+        else:
+            NSApp.run()
 
     elif platform.system() == "Windows":  # Windows-specific
         # Create a hidden window just to be able to receive window message events (for shutdown/logoff clean stop)

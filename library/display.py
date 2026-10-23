@@ -145,6 +145,10 @@ class Display:
     def turn_off(self):
         # Turn screen off
         self.lcd.ScreenOff()
+        try:
+            self.lcd.SetBrightness(0)
+        except Exception:
+            pass
 
         # Turn off backplate RGB LED
         self.lcd.SetBackplateLedColor(led_color=(0, 0, 0))

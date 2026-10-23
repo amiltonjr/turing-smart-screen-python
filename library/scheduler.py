@@ -30,6 +30,7 @@ import library.config as config
 import library.stats as stats
 
 STOPPING = False
+PAUSED = False
 
 
 def async_job(threadname=None):
@@ -62,7 +63,8 @@ def schedule(interval):
                 # If the program is not stopping: re-schedule the task for future execution
                 scheduler.enter(periodic_interval, 1, periodic,
                                 (scheduler, periodic_interval, action, actionargs))
-            action(*actionargs)
+            if not PAUSED and not STOPPING:
+                action(*actionargs)
 
         @wraps(func)
         def wrap(
