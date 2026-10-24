@@ -46,5 +46,9 @@ make clean && make
    </dict>
    ```
 
+## Verbose vs Silent Mode
+- **Silent Mode (Default)**: When `Arguments` is empty (`""`), the driver operates completely silently with zero console text and zero delay, instantly blanking the screen in the background.
+- **Verbose Mode**: Set `<key>Arguments</key>` to `<string>-v</string>` to display bus scan progress, USB VID:PID enumeration, and blanking confirmation on the UEFI console.
+
 > [!NOTE]
 > `LoadEarly` must be `false` so that OpenCore's host controller initialization and UEFI driver model are active before the driver queries the USB subsystem. The driver recursively binds and starts USB bus controllers (`ConnectController`) and polls for active `EFI_USB_IO_PROTOCOL` interfaces before dispatching commands.

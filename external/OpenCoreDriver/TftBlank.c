@@ -1,14 +1,21 @@
 #include "TftBlank.h"
 
 static EFI_GUID gEfiUsbIoProtocolGuid = EFI_USB_IO_PROTOCOL_GUID;
+static EFI_GUID gEfiLoadedImageProtocolGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+
+// Default: silent mode (verbose = false)
+static BOOLEAN gVerbose = 0;
 
 static VOID PrintMessage(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *Msg) {
-    if (SystemTable != NULL && SystemTable->ConOut != NULL && SystemTable->ConOut->OutputString != NULL) {
+    if (gVerbose && SystemTable != NULL && SystemTable->ConOut != NULL && SystemTable->ConOut->OutputString != NULL) {
         SystemTable->ConOut->OutputString(SystemTable->ConOut, Msg);
     }
 }
 
 static VOID PrintNumber(EFI_SYSTEM_TABLE *SystemTable, UINTN Number) {
+    if (!gVerbose) {
+        return;
+    }
     CHAR16 Buf[24];
     INTN i = 22;
     Buf[23] = 0;
@@ -25,6 +32,9 @@ static VOID PrintNumber(EFI_SYSTEM_TABLE *SystemTable, UINTN Number) {
 }
 
 static VOID PrintHex16(EFI_SYSTEM_TABLE *SystemTable, UINT16 Value) {
+    if (!gVerbose) {
+        return;
+    }
     CHAR16 HexChars[] = L"0123456789ABCDEF";
     CHAR16 Buf[5];
     Buf[0] = HexChars[(Value >> 12) & 0xF];
@@ -33,6 +43,42 @@ static VOID PrintHex16(EFI_SYSTEM_TABLE *SystemTable, UINT16 Value) {
     Buf[3] = HexChars[Value & 0xF];
     Buf[4] = 0;
     PrintMessage(SystemTable, Buf);
+}
+
+static BOOLEAN CheckVerboseArgument(EFI_LOADED_IMAGE_PROTOCOL *LoadedImage) {
+    if (LoadedImage == NULL || LoadedImage->LoadOptions == NULL || LoadedImage->LoadOptionsSize == 0) {
+        return 0;
+    }
+
+    // Check as 16-bit Unicode string (standard UEFI / OpenCore)
+    UINTN NumChars = LoadedImage->LoadOptionsSize / sizeof(CHAR16);
+    CHAR16 *Options16 = (CHAR16 *)LoadedImage->LoadOptions;
+    for (UINTN i = 0; i < NumChars; i++) {
+        // Match '-v' or 'verbose'
+        if (Options16[i] == L'-' && i + 1 < NumChars && (Options16[i + 1] == L'v' || Options16[i + 1] == L'V')) {
+            return 1;
+        }
+        if ((Options16[i] == L'v' || Options16[i] == L'V') &&
+            i + 6 < NumChars &&
+            (Options16[i + 1] == L'e' || Options16[i + 1] == L'E') &&
+            (Options16[i + 2] == L'r' || Options16[i + 2] == L'R') &&
+            (Options16[i + 3] == L'b' || Options16[i + 3] == L'B') &&
+            (Options16[i + 4] == L'o' || Options16[i + 4] == L'O') &&
+            (Options16[i + 5] == L's' || Options16[i + 5] == L'S') &&
+            (Options16[i + 6] == L'e' || Options16[i + 6] == L'E')) {
+            return 1;
+        }
+    }
+
+    // Check as 8-bit ASCII string (fallback)
+    UINT8 *Options8 = (UINT8 *)LoadedImage->LoadOptions;
+    for (UINTN i = 0; i < LoadedImage->LoadOptionsSize; i++) {
+        if (Options8[i] == '-' && i + 1 < LoadedImage->LoadOptionsSize && (Options8[i + 1] == 'v' || Options8[i + 1] == 'V')) {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 static VOID ConnectAllControllers(EFI_SYSTEM_TABLE *SystemTable) {
@@ -74,10 +120,23 @@ EfiDriverEntryPoint(
     UINTN                   Index;
     BOOLEAN                 DeviceFound = 0;
 
-    (VOID)ImageHandle;
-
     if (SystemTable == NULL || SystemTable->BootServices == NULL) {
         return EFI_INVALID_PARAMETER;
+    }
+
+    // Default: verbose is FALSE (completely silent)
+    gVerbose = 0;
+
+    // Check if user passed -v or verbose in config.plist Arguments
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage = NULL;
+    Status = SystemTable->BootServices->HandleProtocol(
+        ImageHandle,
+        &gEfiLoadedImageProtocolGuid,
+        (VOID **)&LoadedImage
+    );
+
+    if (!EFI_ERROR(Status) && LoadedImage != NULL) {
+        gVerbose = CheckVerboseArgument(LoadedImage);
     }
 
     PrintMessage(SystemTable, L"[TftBlank] Initializing USB bus connection...\r\n");
@@ -193,7 +252,9 @@ EfiDriverEntryPoint(
                     UsbIo->UsbBulkTransfer(UsbIo, BulkOutEp, cmdScreenOff, &Length, 500, &TransferStatus);
 
                     PrintMessage(SystemTable, L"[TftBlank] Display blanked and backlight extinguished.\r\n");
-                    SystemTable->BootServices->Stall(300000); // 300ms pause so message is visible
+                    if (gVerbose) {
+                        SystemTable->BootServices->Stall(300000); // 300ms pause so message is visible in verbose mode
+                    }
                     break;
                 }
             }
