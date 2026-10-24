@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.turing.display.earlyblanker</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/amiltonjunior/turing-smart-screen-python/venv/bin/python</string>
+        <string>/Users/amiltonjunior/turing-smart-screen-python/tools/early_blanker.py</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/var/log/turing_early_blanker.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/turing_early_blanker.err</string>
+</dict>
+</plist>
