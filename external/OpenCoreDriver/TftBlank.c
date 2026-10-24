@@ -24,6 +24,17 @@ static VOID PrintNumber(EFI_SYSTEM_TABLE *SystemTable, UINTN Number) {
     PrintMessage(SystemTable, &Buf[i + 1]);
 }
 
+static VOID PrintHex16(EFI_SYSTEM_TABLE *SystemTable, UINT16 Value) {
+    CHAR16 HexChars[] = L"0123456789ABCDEF";
+    CHAR16 Buf[5];
+    Buf[0] = HexChars[(Value >> 12) & 0xF];
+    Buf[1] = HexChars[(Value >> 8) & 0xF];
+    Buf[2] = HexChars[(Value >> 4) & 0xF];
+    Buf[3] = HexChars[Value & 0xF];
+    Buf[4] = 0;
+    PrintMessage(SystemTable, Buf);
+}
+
 static VOID ConnectAllControllers(EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
     UINTN NoHandles = 0;
@@ -130,6 +141,12 @@ EfiDriverEntryPoint(
             continue;
         }
 
+        PrintMessage(SystemTable, L" [");
+        PrintHex16(SystemTable, DevDesc.IdVendor);
+        PrintMessage(SystemTable, L":");
+        PrintHex16(SystemTable, DevDesc.IdProduct);
+        PrintMessage(SystemTable, L"]");
+
         // Match Turing Smart Screen 3.5" Revision A (WCH CH554 VID: 0x1A86, PID: 0x5722)
         if (DevDesc.IdVendor == 0x1A86 && DevDesc.IdProduct == 0x5722) {
             EFI_USB_INTERFACE_DESCRIPTOR IfDesc;
@@ -153,7 +170,7 @@ EfiDriverEntryPoint(
                     UINTN Length;
 
                     DeviceFound = 1;
-                    PrintMessage(SystemTable, L"[TftBlank] Found Turing 3.5 display (1a86:5722). Blanking panel...\r\n");
+                    PrintMessage(SystemTable, L"\r\n[TftBlank] Matched Turing 3.5 display! Sending blanking commands...\r\n");
 
                     // 1. Send TO_BLACK (103): Fills frame memory with 0x0000
                     UINT8 cmdBlack[6] = { 0, 0, 0, 0, 0, 103 };
@@ -176,8 +193,12 @@ EfiDriverEntryPoint(
                     UsbIo->UsbBulkTransfer(UsbIo, BulkOutEp, cmdScreenOff, &Length, 500, &TransferStatus);
 
                     PrintMessage(SystemTable, L"[TftBlank] Display blanked and backlight extinguished.\r\n");
+                    SystemTable->BootServices->Stall(300000); // 300ms pause so message is visible
                     break;
                 }
+            }
+            if (DeviceFound) {
+                break;
             }
         }
     }
