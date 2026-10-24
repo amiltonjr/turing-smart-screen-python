@@ -50,5 +50,6 @@ make clean && make
 - **Silent Mode (Default)**: When `Arguments` is empty (`""`), the driver operates completely silently with zero console text and zero delay, instantly blanking the screen in the background.
 - **Verbose Mode**: Set `<key>Arguments</key>` to `<string>-v</string>` to display bus scan progress, USB VID:PID enumeration, and blanking confirmation on the UEFI console.
 
-> [!NOTE]
-> `LoadEarly` must be `false` so that OpenCore's host controller initialization and UEFI driver model are active before the driver queries the USB subsystem. The driver recursively binds and starts USB bus controllers (`ConnectController`) and polls for active `EFI_USB_IO_PROTOCOL` interfaces before dispatching commands.
+> [!WARNING]
+> **RETIRED / REFERENCE ONLY**: On modern Intel 600/700 series platforms (Z690/Z790) booted via OpenCore and `OpenRuntime.efi`, attempting USB communication or handle querying in the UEFI pre-boot phase creates runtime memory map fragmentation and conflicts with the kernel XHCI handoff (`ReleaseUsbOwnership`). This manifests as delayed kernel panics (`pmap_recycle_page: page 0x180000000 is referenced`) once APFS and memory management engage under load.
+> Consequently, this UEFI driver has been permanently retired and removed from active EFI configurations. Display blanking and backlight management are handled via macOS system-level services (`LaunchDaemon` / `TFT Display.app`).

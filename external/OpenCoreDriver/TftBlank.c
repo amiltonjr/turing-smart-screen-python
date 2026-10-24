@@ -81,33 +81,6 @@ static BOOLEAN CheckVerboseArgument(EFI_LOADED_IMAGE_PROTOCOL *LoadedImage) {
     return 0;
 }
 
-static VOID ConnectAllControllers(EFI_SYSTEM_TABLE *SystemTable) {
-    EFI_STATUS Status;
-    UINTN NoHandles = 0;
-    EFI_HANDLE *Handles = NULL;
-
-    if (SystemTable == NULL || SystemTable->BootServices == NULL) {
-        return;
-    }
-
-    // Connect all controllers in the handle database recursively
-    // This forces UEFI UsbBusDxe to start on all USB host controllers and hubs
-    Status = SystemTable->BootServices->LocateHandleBuffer(
-        AllHandles,
-        NULL,
-        NULL,
-        &NoHandles,
-        &Handles
-    );
-
-    if (!EFI_ERROR(Status) && Handles != NULL && NoHandles > 0) {
-        for (UINTN i = 0; i < NoHandles; i++) {
-            SystemTable->BootServices->ConnectController(Handles[i], NULL, NULL, 1);
-        }
-        SystemTable->BootServices->FreePool(Handles);
-    }
-}
-
 EFIAPI
 EFI_STATUS
 EfiDriverEntryPoint(
@@ -139,16 +112,11 @@ EfiDriverEntryPoint(
         gVerbose = CheckVerboseArgument(LoadedImage);
     }
 
-    PrintMessage(SystemTable, L"[TftBlank] Initializing USB bus connection...\r\n");
+    PrintMessage(SystemTable, L"[TftBlank] Passive scan for USB IO interfaces...\r\n");
 
-    // Force enumeration of all USB host controllers and hubs
-    ConnectAllControllers(SystemTable);
-
-    // Give USB devices and hubs time to reset and assign addresses
-    SystemTable->BootServices->Stall(100000); // 100ms
-
-    // Poll for USB IO protocols (up to 15 attempts, 50ms interval = 750ms max)
-    for (UINTN Attempt = 1; Attempt <= 15; Attempt++) {
+    // Pure passive query for existing EFI_USB_IO_PROTOCOL handles.
+    // Zero ConnectController calls, zero touching of storage, PCIe, or memory.
+    for (UINTN Attempt = 1; Attempt <= 10; Attempt++) {
         NoHandles = 0;
         Handles = NULL;
 
