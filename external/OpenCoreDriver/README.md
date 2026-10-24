@@ -40,11 +40,11 @@ make clean && make
        <key>HideVerbose</key>
        <false/>
        <key>LoadEarly</key>
-       <true/>
+       <false/>
        <key>Path</key>
        <string>TftBlank.efi</string>
    </dict>
    ```
 
 > [!NOTE]
-> Setting `LoadEarly` to `true` ensures that OpenCore invokes `TftBlank.efi` at the earliest stage before graphics or picker drivers are initialized.
+> `LoadEarly` must be `false` so that OpenCore's host controller initialization and UEFI driver model are active before the driver queries the USB subsystem. The driver recursively binds and starts USB bus controllers (`ConnectController`) and polls for active `EFI_USB_IO_PROTOCOL` interfaces before dispatching commands.

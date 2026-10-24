@@ -194,6 +194,13 @@ struct _EFI_USB_IO_PROTOCOL {
     VOID                                *UsbPortReset;
 };
 
+typedef EFI_STATUS (EFIAPI *EFI_CONNECT_CONTROLLER) (
+    EFI_HANDLE ControllerHandle,
+    EFI_HANDLE *DriverImageHandle,
+    VOID       *RemainingDevicePath,
+    BOOLEAN    Recursive
+);
+
 typedef struct _EFI_BOOT_SERVICES {
     EFI_TABLE_HEADER                Hdr;
     VOID                            *RaiseTPL;
@@ -234,7 +241,7 @@ typedef struct _EFI_BOOT_SERVICES {
         UINTN Microseconds
     );
     VOID                            *SetWatchdogTimer;
-    VOID                            *ConnectController;
+    EFI_CONNECT_CONTROLLER          ConnectController;
     VOID                            *DisconnectController;
     VOID                            *OpenProtocol;
     VOID                            *CloseProtocol;

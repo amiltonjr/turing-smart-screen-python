@@ -8,13 +8,56 @@ static VOID PrintMessage(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *Msg) {
     }
 }
 
+static VOID PrintNumber(EFI_SYSTEM_TABLE *SystemTable, UINTN Number) {
+    CHAR16 Buf[24];
+    INTN i = 22;
+    Buf[23] = 0;
+    if (Number == 0) {
+        Buf[22] = L'0';
+        PrintMessage(SystemTable, &Buf[22]);
+        return;
+    }
+    while (Number > 0 && i >= 0) {
+        Buf[i--] = (CHAR16)(L'0' + (Number % 10));
+        Number /= 10;
+    }
+    PrintMessage(SystemTable, &Buf[i + 1]);
+}
+
+static VOID ConnectAllControllers(EFI_SYSTEM_TABLE *SystemTable) {
+    EFI_STATUS Status;
+    UINTN NoHandles = 0;
+    EFI_HANDLE *Handles = NULL;
+
+    if (SystemTable == NULL || SystemTable->BootServices == NULL) {
+        return;
+    }
+
+    // Connect all controllers in the handle database recursively
+    // This forces UEFI UsbBusDxe to start on all USB host controllers and hubs
+    Status = SystemTable->BootServices->LocateHandleBuffer(
+        AllHandles,
+        NULL,
+        NULL,
+        &NoHandles,
+        &Handles
+    );
+
+    if (!EFI_ERROR(Status) && Handles != NULL && NoHandles > 0) {
+        for (UINTN i = 0; i < NoHandles; i++) {
+            SystemTable->BootServices->ConnectController(Handles[i], NULL, NULL, 1);
+        }
+        SystemTable->BootServices->FreePool(Handles);
+    }
+}
+
 EFIAPI
 EFI_STATUS
 EfiDriverEntryPoint(
     IN EFI_HANDLE           ImageHandle,
     IN EFI_SYSTEM_TABLE     *SystemTable
 ) {
-    EFI_STATUS              Status;
+    EFI_STATUS              Status = EFI_SUCCESS;
     UINTN                   NoHandles = 0;
     EFI_HANDLE              *Handles = NULL;
     UINTN                   Index;
@@ -22,24 +65,51 @@ EfiDriverEntryPoint(
 
     (VOID)ImageHandle;
 
-    PrintMessage(SystemTable, L"[TftBlank] Scanning USB devices for Turing Smart Screen...\r\n");
-
     if (SystemTable == NULL || SystemTable->BootServices == NULL) {
         return EFI_INVALID_PARAMETER;
     }
 
-    Status = SystemTable->BootServices->LocateHandleBuffer(
-        ByProtocol,
-        &gEfiUsbIoProtocolGuid,
-        NULL,
-        &NoHandles,
-        &Handles
-    );
+    PrintMessage(SystemTable, L"[TftBlank] Initializing USB bus connection...\r\n");
 
-    if (EFI_ERROR(Status) || Handles == NULL || NoHandles == 0) {
-        PrintMessage(SystemTable, L"[TftBlank] No USB IO protocols found in UEFI.\r\n");
+    // Force enumeration of all USB host controllers and hubs
+    ConnectAllControllers(SystemTable);
+
+    // Give USB devices and hubs time to reset and assign addresses
+    SystemTable->BootServices->Stall(100000); // 100ms
+
+    // Poll for USB IO protocols (up to 15 attempts, 50ms interval = 750ms max)
+    for (UINTN Attempt = 1; Attempt <= 15; Attempt++) {
+        NoHandles = 0;
+        Handles = NULL;
+
+        Status = SystemTable->BootServices->LocateHandleBuffer(
+            ByProtocol,
+            &gEfiUsbIoProtocolGuid,
+            NULL,
+            &NoHandles,
+            &Handles
+        );
+
+        if (!EFI_ERROR(Status) && Handles != NULL && NoHandles > 0) {
+            break;
+        }
+
+        if (Handles != NULL) {
+            SystemTable->BootServices->FreePool(Handles);
+            Handles = NULL;
+        }
+
+        SystemTable->BootServices->Stall(50000); // 50ms
+    }
+
+    if (Handles == NULL || NoHandles == 0) {
+        PrintMessage(SystemTable, L"[TftBlank] No USB IO protocols found after bus scan.\r\n");
         return EFI_SUCCESS;
     }
+
+    PrintMessage(SystemTable, L"[TftBlank] Found ");
+    PrintNumber(SystemTable, NoHandles);
+    PrintMessage(SystemTable, L" USB IO device handles. Scanning...\r\n");
 
     for (Index = 0; Index < NoHandles; Index++) {
         EFI_USB_IO_PROTOCOL *UsbIo = NULL;
@@ -83,7 +153,7 @@ EfiDriverEntryPoint(
                     UINTN Length;
 
                     DeviceFound = 1;
-                    PrintMessage(SystemTable, L"[TftBlank] Found Turing 3.5 display. Blanking panel...\r\n");
+                    PrintMessage(SystemTable, L"[TftBlank] Found Turing 3.5 display (1a86:5722). Blanking panel...\r\n");
 
                     // 1. Send TO_BLACK (103): Fills frame memory with 0x0000
                     UINT8 cmdBlack[6] = { 0, 0, 0, 0, 0, 103 };
@@ -115,7 +185,7 @@ EfiDriverEntryPoint(
     SystemTable->BootServices->FreePool(Handles);
 
     if (!DeviceFound) {
-        PrintMessage(SystemTable, L"[TftBlank] Device 1a86:5722 not present on this bus scan.\r\n");
+        PrintMessage(SystemTable, L"[TftBlank] Device 1a86:5722 not matched on active interfaces.\r\n");
     }
 
     return EFI_SUCCESS;
