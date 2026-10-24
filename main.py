@@ -143,6 +143,8 @@ if __name__ == "__main__":
 
 
     if platform.system() == "Windows":
+        is_sleeping = False
+
         def on_win32_ctrl_event(event):
             """Handle Windows console control events (like Ctrl-C)."""
             if event in (win32con.CTRL_C_EVENT, win32con.CTRL_BREAK_EVENT, win32con.CTRL_CLOSE_EVENT):
@@ -152,23 +154,40 @@ if __name__ == "__main__":
 
 
         def on_win32_wm_event(hWnd, msg, wParam, lParam):
-            """Handle Windows window message events (like ENDSESSION, CLOSE, DESTROY)."""
-            logger.debug("Caught Windows window message event %s" % msg)
+            """Handle Windows window message events (like ENDSESSION, CLOSE, DESTROY, POWERBROADCAST)."""
+            global is_sleeping
+            logger.debug("Caught Windows window message event %s (wParam=%s)" % (msg, wParam))
             if msg == win32con.WM_POWERBROADCAST:
                 # WM_POWERBROADCAST is used to detect computer going to/resuming from sleep
                 if wParam == win32con.PBT_APMSUSPEND:
-                    logger.info("Computer is going to sleep, display will turn off")
-                    display.turn_off()
-                elif wParam == win32con.PBT_APMRESUMEAUTOMATIC:
-                    logger.info("Computer is resuming from sleep, display will turn on")
-                    display.turn_on()
-                    # Some models have troubles displaying back the previous bitmap after being turned off/on
-                    display.display_static_images()
-                    display.display_static_text()
+                    if not is_sleeping:
+                        is_sleeping = True
+                        logger.info("Computer is going to sleep, display will turn off")
+                        scheduler.PAUSED = True
+                        wait_for_empty_queue(2)
+                        display.turn_off()
+                        wait_for_empty_queue(2)
+                    return 1
+                elif wParam in (win32con.PBT_APMRESUMEAUTOMATIC, getattr(win32con, "PBT_APMRESUMESUSPEND", 7)):
+                    if is_sleeping:
+                        is_sleeping = False
+                        logger.info("Computer is resuming from sleep, display will turn on")
+                        display.turn_on()
+                        # Some models have troubles displaying back the previous bitmap after being turned off/on
+                        display.display_static_images()
+                        display.display_static_text()
+                        scheduler.PAUSED = False
+                    return 1
+                return 1
+            elif msg in (win32con.WM_QUERYENDSESSION, win32con.WM_ENDSESSION):
+                logger.info("Windows session ending, clean stop")
+                clean_stop()
+                return 1
             else:
                 # For any other events, the program will stop
                 logger.info("Program will now exit")
                 clean_stop()
+                return 0
 
     # Create a tray icon for the program, with an Exit entry in menu
     try:
@@ -303,7 +322,11 @@ if __name__ == "__main__":
         wndclass.lpfnWndProc = messageMap
 
         try:
-            myWindowClass = win32gui.RegisterClass(wndclass)
+            try:
+                myWindowClass = win32gui.RegisterClass(wndclass)
+            except Exception:
+                myWindowClass = wndclass.lpszClassName
+
             hwnd = win32gui.CreateWindowEx(win32con.WS_EX_LEFT,
                                            myWindowClass,
                                            "turingEventWnd",
@@ -316,10 +339,27 @@ if __name__ == "__main__":
                                            0,
                                            hinst,
                                            None)
+
+            # Modern Windows (8/10/11) requires explicit registration to receive suspend/resume broadcasts
+            try:
+                import ctypes
+                import ctypes.wintypes
+                user32 = ctypes.windll.user32
+                user32.RegisterSuspendResumeNotification.argtypes = [ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD]
+                user32.RegisterSuspendResumeNotification.restype = ctypes.c_void_p
+                # DEVICE_NOTIFY_WINDOW_HANDLE = 0
+                h_power_notify = user32.RegisterSuspendResumeNotification(hwnd, 0)
+                if h_power_notify:
+                    logger.debug("Successfully registered for Windows suspend/resume notifications")
+                else:
+                    logger.warning("Failed to register for Windows suspend/resume notifications")
+            except Exception as e:
+                logger.warning(f"RegisterSuspendResumeNotification failed: {e}")
+
             while True:
                 # Receive and dispatch window messages
                 win32gui.PumpWaitingMessages()
-                time.sleep(0.5)
+                time.sleep(0.2)
 
         except Exception as e:
             logger.error("Exception while creating event window: %s" % str(e))
