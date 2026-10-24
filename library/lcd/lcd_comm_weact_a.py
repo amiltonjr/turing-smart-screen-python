@@ -149,15 +149,15 @@ class LcdCommWeActA(LcdComm):
         byteBuffer[11] = Command.CMD_END
         self.SendCommand(byteBuffer)
 
-    def ScreenOff(self):
-        self.SetBrightness(0)
+    def ScreenOff(self, bypass_queue: bool = False):
+        self.SetBrightness(0, bypass_queue=bypass_queue)
         self.SetSensorReportTime(0)
         self.Free()
 
-    def ScreenOn(self):
-        self.SetBrightness(self.brightness)
+    def ScreenOn(self, bypass_queue: bool = False):
+        self.SetBrightness(self.brightness, bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 0):
+    def SetBrightness(self, level: int = 0, bypass_queue: bool = False):
         assert 0 <= level <= 100, "Brightness level must be [0-100]"
         converted_level = int((level / 100) * 255)
         brightness_ms = 1000
@@ -167,7 +167,7 @@ class LcdCommWeActA(LcdComm):
         byteBuffer[2] = brightness_ms & 0xFF
         byteBuffer[3] = brightness_ms >> 8 & 0xFF
         byteBuffer[4] = Command.CMD_END
-        self.SendCommand(byteBuffer)
+        self.SendCommand(byteBuffer, bypass_queue=bypass_queue)
         self.brightness = level
 
     def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT):

@@ -111,11 +111,21 @@ if __name__ == "__main__":
         except Exception:
             pass
 
-        # Turn screen and LEDs off before stopping
-        display.turn_off()
+        # Turn screen and LEDs off before stopping immediately via serial
+        try:
+            display.turn_off(bypass_queue=True)
+        except Exception as e:
+            logger.error(f"Error turning off display: {e}")
 
-        # Waiting for all pending request to be sent to display (fast)
-        wait_for_empty_queue(2)
+        # Wait briefly for serial write to complete
+        time.sleep(0.1)
+
+        # Close serial port cleanly to drop DTR/RTS and let MCU go idle
+        try:
+            if hasattr(display.lcd, "lcd_serial") and display.lcd.lcd_serial:
+                display.lcd.closeSerial()
+        except Exception as e:
+            logger.error(f"Error closing serial: {e}")
 
         # Remove tray icon just before exit
         if tray_icon:
@@ -252,8 +262,8 @@ if __name__ == "__main__":
                                 break
                     except Exception:
                         pass
-                    display.turn_off()
-                    wait_for_empty_queue(2)
+                    display.turn_off(bypass_queue=True)
+                    time.sleep(0.1)
 
             def _handle_wake(self):
                 if self.is_display_off:
@@ -269,7 +279,7 @@ if __name__ == "__main__":
                                 display.lcd.openSerial()
                             except Exception:
                                 pass
-                    display.turn_on()
+                    display.turn_on(bypass_queue=True)
                     display.display_static_images()
                     display.display_static_text()
                     scheduler.PAUSED = False

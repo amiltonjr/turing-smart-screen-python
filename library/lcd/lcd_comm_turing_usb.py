@@ -952,16 +952,16 @@ class LcdCommTuringUSB(LcdComm):
     def Clear(self):
         clear_image(self.dev)
 
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         # Turing USB models do not implement a "screen off" command (that we know of): use SetBrightness(0) instead
         self.Clear()
-        self.SetBrightness(0)
+        self.SetBrightness(0, bypass_queue=bypass_queue)
 
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         # Turing USB models do not implement a "screen off" command (that we know of): using SetBrightness() instead
-        self.SetBrightness()
+        self.SetBrightness(bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         assert 0 <= level <= 100, 'Brightness level must be [0-100]'
         converted = int(level / 100 * 102)
         send_brightness_command(self.dev, converted)

@@ -94,15 +94,15 @@ class LcdCommRevD(LcdComm):
         color_bytes = bytearray(color.to_bytes(2, "big"))
         self.SendCommand(cmd=Command.DISPCOLOR, payload=color_bytes)
 
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         # HW revision D does not implement a "ScreenOff" native command: using SetBrightness(0) instead
-        self.SetBrightness(0)
+        self.SetBrightness(0, bypass_queue=bypass_queue)
 
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         # HW revision D does not implement a "ScreenOn" native command: using SetBrightness() instead
-        self.SetBrightness()
+        self.SetBrightness(bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         assert 0 <= level <= 100, 'Brightness level must be [0-100]'
 
         # Brightness scales from 0 to 500, with 500 being the brightest and 0 being the darkest.
@@ -112,8 +112,8 @@ class LcdCommRevD(LcdComm):
         level_bytes = bytearray(converted_level.to_bytes(2, "big"))
 
         # Send the command twice because sometimes it is not applied...
-        self.SendCommand(cmd=Command.SETBL, payload=level_bytes)
-        self.SendCommand(cmd=Command.SETBL, payload=level_bytes)
+        self.SendCommand(cmd=Command.SETBL, payload=level_bytes, bypass_queue=bypass_queue)
+        self.SendCommand(cmd=Command.SETBL, payload=level_bytes, bypass_queue=bypass_queue)
 
     def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT):
         # In revision D, reverse orientations (reverse portrait / reverse landscape) are managed by the display

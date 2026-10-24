@@ -92,13 +92,13 @@ class LcdSimulated(LcdComm):
     def Clear(self):
         self.SetOrientation(self.orientation)
 
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         pass
 
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         pass
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         pass
 
     def SetBackplateLedColor(self, led_color: Tuple[int, int, int] = (255, 255, 255)):

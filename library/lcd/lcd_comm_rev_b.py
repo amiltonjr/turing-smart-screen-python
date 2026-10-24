@@ -157,15 +157,15 @@ class LcdCommRevB(LcdComm):
         # Restore orientation
         self.SetOrientation(orientation=backup_orientation)
 
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         # HW revision B does not implement a "ScreenOff" native command: using SetBrightness(0) instead
-        self.SetBrightness(0)
+        self.SetBrightness(0, bypass_queue=bypass_queue)
 
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         # HW revision B does not implement a "ScreenOn" native command: using SetBrightness() instead
-        self.SetBrightness()
+        self.SetBrightness(bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         assert 0 <= level <= 100, 'Brightness level must be [0-100]'
 
         if self.is_brightness_range():
@@ -177,7 +177,7 @@ class LcdCommRevB(LcdComm):
             logger.info("Your display does not support custom brightness level")
             converted_level = 1 if level == 0 else 0
 
-        self.SendCommand(Command.SET_BRIGHTNESS, payload=[converted_level])
+        self.SendCommand(Command.SET_BRIGHTNESS, payload=[converted_level], bypass_queue=bypass_queue)
 
     def SetBackplateLedColor(self, led_color: Color = (255, 255, 255)):
         led_color = parse_color(led_color)

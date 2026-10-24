@@ -284,19 +284,19 @@ class LcdCommRevC(LcdComm):
         # Restore orientation
         self.SetOrientation(orientation=backup_orientation)
 
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         # logger.info("Calling ScreenOff")
-        self._send_command(Command.STOP_VIDEO)
-        self._send_command(Command.STOP_MEDIA, readsize=1024)
-        self._send_command(Command.TURNOFF)
+        self._send_command(Command.STOP_VIDEO, bypass_queue=bypass_queue)
+        self._send_command(Command.STOP_MEDIA, readsize=1024, bypass_queue=bypass_queue)
+        self._send_command(Command.TURNOFF, bypass_queue=bypass_queue)
 
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         # logger.info("Calling ScreenOn")
-        self._send_command(Command.STOP_VIDEO)
-        self._send_command(Command.STOP_MEDIA, readsize=1024)
-        # self._send_command(Command.SET_BRIGHTNESS, payload=bytearray([255]))
+        self._send_command(Command.STOP_VIDEO, bypass_queue=bypass_queue)
+        self._send_command(Command.STOP_MEDIA, readsize=1024, bypass_queue=bypass_queue)
+        # self._send_command(Command.SET_BRIGHTNESS, payload=bytearray([255]), bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         # logger.info("Call SetBrightness")
         assert 0 <= level <= 100, 'Brightness level must be [0-100]'
 
@@ -304,7 +304,7 @@ class LcdCommRevC(LcdComm):
         # Convert our brightness % to an absolute value.
         converted_level = int((level / 100) * 255)
 
-        self._send_command(Command.SET_BRIGHTNESS, payload=bytearray((converted_level,)), bypass_queue=True)
+        self._send_command(Command.SET_BRIGHTNESS, payload=bytearray((converted_level,)), bypass_queue=bypass_queue)
 
     def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT):
         self.orientation = orientation

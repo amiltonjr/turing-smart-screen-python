@@ -59,11 +59,14 @@ def schedule(interval):
 
         def periodic(scheduler, periodic_interval, action, actionargs=()):
             """ Wrap the scheduler with our periodic interval """
-            if not STOPPING:
+            is_queue = getattr(action, "__name__", "") == "QueueHandler"
+            if not STOPPING or (is_queue and not config.update_queue.empty()):
                 # If the program is not stopping: re-schedule the task for future execution
                 scheduler.enter(periodic_interval, 1, periodic,
                                 (scheduler, periodic_interval, action, actionargs))
-            if not PAUSED and not STOPPING:
+            if is_queue:
+                action(*actionargs)
+            elif not PAUSED and not STOPPING:
                 action(*actionargs)
 
         @wraps(func)

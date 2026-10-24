@@ -132,26 +132,60 @@ class Display:
         # Set orientation
         self.lcd.SetOrientation(_get_theme_orientation())
 
-    def turn_on(self):
+    def turn_on(self, bypass_queue: bool = False):
         # Turn screen on in case it was turned off previously
-        self.lcd.ScreenOn()
+        try:
+            self.lcd.ScreenOn(bypass_queue=bypass_queue)
+        except TypeError:
+            self.lcd.ScreenOn()
 
         # Set brightness
-        self.lcd.SetBrightness(config.CONFIG_DATA["display"]["BRIGHTNESS"])
+        try:
+            self.lcd.SetBrightness(config.CONFIG_DATA["display"]["BRIGHTNESS"], bypass_queue=bypass_queue)
+        except TypeError:
+            self.lcd.SetBrightness(config.CONFIG_DATA["display"]["BRIGHTNESS"])
 
         # Set backplate RGB LED color (for supported HW only)
-        self.lcd.SetBackplateLedColor(config.THEME_DATA['display'].get("DISPLAY_RGB_LED", (255, 255, 255)))
-
-    def turn_off(self):
-        # Turn screen off
-        self.lcd.ScreenOff()
         try:
-            self.lcd.SetBrightness(0)
+            self.lcd.SetBackplateLedColor(config.THEME_DATA['display'].get("DISPLAY_RGB_LED", (255, 255, 255)))
+        except Exception:
+            pass
+
+        if bypass_queue and hasattr(self.lcd, "lcd_serial") and self.lcd.lcd_serial:
+            try:
+                self.lcd.lcd_serial.flush()
+            except Exception:
+                pass
+
+    def turn_off(self, bypass_queue: bool = True):
+        # Turn screen off immediately
+        try:
+            self.lcd.ScreenOff(bypass_queue=bypass_queue)
+        except TypeError:
+            self.lcd.ScreenOff()
+
+        try:
+            self.lcd.SetBrightness(0, bypass_queue=bypass_queue)
+        except TypeError:
+            try:
+                self.lcd.SetBrightness(0)
+            except Exception:
+                pass
         except Exception:
             pass
 
         # Turn off backplate RGB LED
-        self.lcd.SetBackplateLedColor(led_color=(0, 0, 0))
+        try:
+            self.lcd.SetBackplateLedColor(led_color=(0, 0, 0))
+        except Exception:
+            pass
+
+        # If bypass_queue, flush serial output buffer immediately
+        if bypass_queue and hasattr(self.lcd, "lcd_serial") and self.lcd.lcd_serial:
+            try:
+                self.lcd.lcd_serial.flush()
+            except Exception:
+                pass
 
     def display_static_images(self):
         if config.THEME_DATA.get('static_images', False):

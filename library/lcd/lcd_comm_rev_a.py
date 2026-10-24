@@ -137,13 +137,13 @@ class LcdCommRevA(LcdComm):
         self.SendCommand(Command.CLEAR, 0, 0, 0, 0)
         self.SetOrientation()  # Restore default orientation
 
-    def ScreenOff(self):
-        self.SendCommand(Command.SCREEN_OFF, 0, 0, 0, 0)
+    def ScreenOff(self, bypass_queue: bool = False):
+        self.SendCommand(Command.SCREEN_OFF, 0, 0, 0, 0, bypass_queue=bypass_queue)
 
-    def ScreenOn(self):
-        self.SendCommand(Command.SCREEN_ON, 0, 0, 0, 0)
+    def ScreenOn(self, bypass_queue: bool = False):
+        self.SendCommand(Command.SCREEN_ON, 0, 0, 0, 0, bypass_queue=bypass_queue)
 
-    def SetBrightness(self, level: int = 25):
+    def SetBrightness(self, level: int = 25, bypass_queue: bool = False):
         assert 0 <= level <= 100, 'Brightness level must be [0-100]'
 
         # Display scales from 0 to 255, with 0 being the brightest and 255 being the darkest.
@@ -151,7 +151,7 @@ class LcdCommRevA(LcdComm):
         level_absolute = int(255 - ((level / 100) * 255))
 
         # Level : 0 (brightest) - 255 (darkest)
-        self.SendCommand(Command.SET_BRIGHTNESS, level_absolute, 0, 0, 0)
+        self.SendCommand(Command.SET_BRIGHTNESS, level_absolute, 0, 0, 0, bypass_queue=bypass_queue)
 
     def SetOrientation(self, orientation: Orientation = Orientation.PORTRAIT):
         self.orientation = orientation

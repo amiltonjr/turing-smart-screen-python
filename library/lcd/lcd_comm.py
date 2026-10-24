@@ -46,7 +46,7 @@ class Orientation(IntEnum):
 
 # The screen resets itself when the program starts, so its COM port can disappear or change for a
 # few seconds: opening it is retried instead of giving up (and exiting) on the first failure.
-SERIAL_OPEN_ATTEMPTS = 10
+SERIAL_OPEN_ATTEMPTS = 30
 SERIAL_OPEN_RETRY_DELAY = 1  # seconds
 
 
@@ -137,7 +137,15 @@ class LcdComm(ABC):
 
     def closeSerial(self):
         if self.lcd_serial is not None:
-            self.lcd_serial.close()
+            try:
+                self.lcd_serial.flush()
+            except Exception:
+                pass
+            try:
+                self.lcd_serial.close()
+            except Exception:
+                pass
+            self.lcd_serial = None
 
     def serial_write(self, data: bytes):
         assert self.lcd_serial is not None
@@ -220,15 +228,15 @@ class LcdComm(ABC):
         pass
 
     @abstractmethod
-    def ScreenOff(self):
+    def ScreenOff(self, bypass_queue: bool = False):
         pass
 
     @abstractmethod
-    def ScreenOn(self):
+    def ScreenOn(self, bypass_queue: bool = False):
         pass
 
     @abstractmethod
-    def SetBrightness(self, level: int):
+    def SetBrightness(self, level: int, bypass_queue: bool = False):
         pass
 
     def SetBackplateLedColor(self, led_color: Tuple[int, int, int] = (255, 255, 255)):
